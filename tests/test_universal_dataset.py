@@ -216,6 +216,15 @@ def test_upload_extension_and_size_limits(client, monkeypatch):
     assert oversized.status_code == 413
 
 
+def test_clean_export_escapes_spreadsheet_formulas(client):
+    report = upload(client, "formula.csv", b"Comment\n=1+1\n@external\n").json()
+    response = client.get("/api/dataset/export-clean", params={"dataset_id": report["dataset_id"]})
+
+    assert response.status_code == 200
+    assert "'=1+1" in response.text
+    assert "'@external" in response.text
+
+
 def test_sales_demo_compatibility_routes(client):
     assert client.get("/api/health").json()["status"] == "healthy"
     overview = client.get("/api/overview").json()

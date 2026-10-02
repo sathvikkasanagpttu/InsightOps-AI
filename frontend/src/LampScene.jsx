@@ -23,7 +23,7 @@ export default function LampScene() {
 
     let renderer;
     try {
-      renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "high-performance" });
+      renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true, powerPreference: "high-performance" });
     } catch {
       host.dataset.sceneUnavailable = "true";
       return undefined;
@@ -161,6 +161,9 @@ export default function LampScene() {
       const width = host.clientWidth;
       const height = host.clientHeight;
       if (!width || !height) return;
+      const narrowScreen = width < 680;
+      lampRoot.position.set(narrowScreen ? -0.1 : -1.25, narrowScreen ? -1.48 : -1.0, 0);
+      lampRoot.scale.setScalar(narrowScreen ? 0.56 : 1);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height, false);

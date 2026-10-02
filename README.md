@@ -13,6 +13,7 @@ InsightOps AI profiles CSV and Excel datasets, detects schema and semantics, cle
 - AI Analyst answers with evidence, source columns and calculation descriptions; no external AI provider
 - Data Studio sections for overview, schema, quality, missing values, duplicates, data types, sensitive fields and cleaning actions
 - Cleaned CSV export
+- Animated Three.js lamp login screen with responsive local-preview access
 - Bundled sales and customer-operations sample datasets
 
 ## Run Locally
@@ -49,6 +50,8 @@ npm run dev
 ```
 
 Open `http://localhost:5173`.
+
+The sign-in screen is a local demo gate, not production authentication: enter a valid email and any password with at least 8 characters to open the workspace. Credentials are validated in the browser and are not sent to the API.
 
 ### Docker
 
