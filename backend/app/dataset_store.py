@@ -100,7 +100,7 @@ class DatasetStore:
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
         report = metadata["report"]
         date_columns = [col["name"] for col in report["schema"] if col["semantic_type"] == "datetime"]
-        frame = pd.read_csv(clean_path, parse_dates=date_columns)
+        frame = pd.read_csv(clean_path, parse_dates=date_columns, encoding="utf-8", encoding_errors="replace")
         raw_path = folder / metadata["filename"]
 
         return {

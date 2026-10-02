@@ -1,14 +1,53 @@
 services:
+  db:
+    image: postgres:16-alpine
+    container_name: insightops-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: insightops
+      POSTGRES_PASSWORD: insightops_password
+      POSTGRES_DB: insightops_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U insightops -d insightops_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   api:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    ports: ["8000:8000"]
-    volumes: ["./data:/app/data"]
+    container_name: insightops-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./backend:/app/backend
+    environment:
+      - DATABASE_URL=postgresql://insightops:insightops_password@db:5432/insightops_db
+      - JWT_SECRET_KEY=insightops-secret-key-change-in-production-2026-bi-saas-enterprise
+    depends_on:
+      db:
+        condition: service_healthy
+
   web:
     image: node:22-alpine
+    container_name: insightops-web
     working_dir: /app
-    volumes: ["./frontend:/app"]
+    volumes:
+      - ./frontend:/app
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
-    ports: ["5173:5173"]
-    depends_on: [api]
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:

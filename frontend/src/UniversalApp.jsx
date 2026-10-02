@@ -1,32 +1,42 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  AlertTriangle, ArrowDown, ArrowUp, BarChart3, BrainCircuit, Check, CheckCircle2,
+  AlertTriangle, ArrowDown, ArrowUp, BarChart3, Bell, BrainCircuit, Check, CheckCircle2,
   ChevronDown, ChevronLeft, ChevronRight, Copy, Database, Download, Eye, FileSpreadsheet,
-  FileText, Filter, HelpCircle, Info, Layers, LayoutGrid, LogOut, Maximize2, RefreshCw, Search,
-  Send, Share2, ShieldCheck, Sliders, Sparkles, Table, Trash2, TrendingDown, TrendingUp,
-  Upload, X, Zap
+  FileText, Filter, HelpCircle, Info, Layers, LayoutGrid, LogOut, Maximize2, Moon, RefreshCw, Search,
+  Send, Share2, ShieldCheck, Sliders, Sparkles, Sun, Table, Trash2, TrendingDown, TrendingUp,
+  Upload, User, X, Zap, Activity
 } from "lucide-react";
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart,
   Pie, PieChart, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis
 } from "recharts";
 import { api } from "./lib/api";
+import { useAuth } from "./context/AuthContext";
 import PowerBIDashboard from "./components/visuals/PowerBIDashboard";
+import GlobalSearchBar from "./components/saas/GlobalSearchBar";
+import SaaSDashboardView from "./components/saas/SaaSDashboardView";
+import WorkspacesView from "./components/saas/WorkspacesView";
+import ReportsManagerView from "./components/saas/ReportsManagerView";
+import AlertsCenterView from "./components/saas/AlertsCenterView";
+import ActivityLogView from "./components/saas/ActivityLogView";
+import ProfileSettingsView from "./components/saas/ProfileSettingsView";
 import "./universal.css";
+import "./saas.css";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 const navItems = [
-  { id: "overview", label: "Overview", icon: BarChart3 },
+  { id: "overview", label: "Dashboard", icon: BarChart3 },
   { id: "visuals", label: "BI Studio", icon: LayoutGrid },
   { id: "data", label: "Data Studio", icon: Database },
+  { id: "reports", label: "Reports", icon: FileText },
   { id: "analyst", label: "AI Analyst", icon: BrainCircuit },
   { id: "explore", label: "Explore", icon: Search },
   { id: "forecast", label: "Forecasts", icon: TrendingUp },
   { id: "anomalies", label: "Anomalies", icon: AlertTriangle },
-  { id: "alerts", label: "Alerts", icon: Info },
-  { id: "reports", label: "Reports", icon: FileText },
-  { id: "dataset", label: "Dataset", icon: Layers },
+  { id: "alerts", label: "Alerts", icon: Bell },
+  { id: "workspaces", label: "Workspaces", icon: Layers },
+  { id: "activity", label: "Audit Log", icon: Activity },
   { id: "settings", label: "Settings", icon: Sliders }
 ];
 
@@ -153,10 +163,34 @@ function ChartPanel({ chart }) {
 }
 
 export default function UniversalApp({ onSignOut }) {
+  const { user, workspaces, activeWorkspace, switchWorkspace, logout } = useAuth();
   const [activeView, setActiveView] = useState("overview");
   const [activeSection, setActiveSection] = useState("Overview");
   const [edaTab, setEdaTab] = useState("Overview");
   const [datasetId, setDatasetId] = useState(() => localStorage.getItem("insightops.datasetId") || "demo-sales");
+
+  // SaaS Navigation & UI State
+  const [searchModalOpen, setSearchModalOpen] = useState(false);
+  const [wsDropdownOpen, setWsDropdownOpen] = useState(false);
+  const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const [theme, setTheme] = useState(() => localStorage.getItem("insightops.theme") || "dark");
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("insightops.theme", theme);
+  }, [theme]);
+
+  // Global search shortcut (Cmd+K / Ctrl+K)
+  useEffect(() => {
+    function onKey(e) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchModalOpen(prev => !prev);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // Dataset analysis states
   const [profile, setProfile] = useState(null);
@@ -435,21 +469,33 @@ export default function UniversalApp({ onSignOut }) {
     });
 
   const heading = {
-    overview: ["LIVE DATA INTELLIGENCE", profile?.dataset_type || "Dataset Overview", profile?.filename || "Dynamic inspection, cleaning and analytics."],
+    overview: ["EXECUTIVE BI SAAS", "SaaS Dashboard", "Multi-workspace operations, dataset telemetry, saved reports, and live alerts."],
     visuals: ["POWER BI VISUAL STUDIO", "Interactive BI Studio", profile?.filename || "Multi-page report builder, drag-and-drop visual designer and cross-filtering."],
     data: ["DATA INGESTION STUDIO", "Data Studio", profile?.filename || "Inspect schema, quality and cleaning pipeline."],
+    reports: ["REPORT BUILDER & LIBRARY", "Saved Reports", "Scheduled delivery, public sharing, and multi-page BI dashboards."],
     analyst: ["VERIFIED AI ANALYST", "Ask Your Dataset", "Calculated analytics with 100% traceable source evidence."],
     explore: ["EXPLORATORY DATA ANALYSIS", "EDA Workspace", "Distributions, correlations, relationships and time trends."],
     forecast: ["PREDICTIVE ENGINE", forecast?.metric === "revenue" ? "Revenue Forecast" : "Volume Forecast", "Confidence intervals and multi-period projection."],
     anomalies: ["STATISTICAL ANOMALY ENGINE", "Anomaly Detection", "Outliers detected via IQR, Z-Score and Isolation Forest."],
-    alerts: ["QUALITY & COMPLIANCE", "Active Alerts", "Automated alerts for missingness, duplicates, and data health."],
-    reports: ["EXECUTIVE INTELLIGENCE", "Analysis Report", "Comprehensive business intelligence report ready for export."],
+    alerts: ["INTELLIGENT MONITORING & SLA", "Alerts Center", "Automated alert rules, threshold monitors, and live notification feed."],
+    workspaces: ["ORGANIZATION & RBAC", "Workspace Management", "Collaborative team workspaces and role-based permissions."],
+    activity: ["SECURITY & COMPLIANCE", "Activity Audit Log", "Immutable chronological record of logins, uploads, and report actions."],
     dataset: ["DATASET SESSION", "Active Dataset", profile?.filename || "Manage dataset session and exports."],
-    settings: ["SYSTEM SETTINGS", "Preferences", "Display preferences, number formatting and privacy controls."]
+    settings: ["ACCOUNT & PLATFORM", "Settings & Health", "User profile, password change, UI themes, and backend telemetry."]
   }[activeView] || ["INTELLIGENCE", "Dashboard", ""];
 
   return (
     <div className="app">
+      {/* Global Spotlight Search Modal */}
+      <GlobalSearchBar
+        isOpen={searchModalOpen}
+        onClose={() => setSearchModalOpen(false)}
+        onNavigate={(view, extra) => {
+          setActiveView(view);
+          if (extra?.datasetId) loadDataset(extra.datasetId);
+        }}
+      />
+
       {/* Toast Notifications */}
       <div className="toast-container" aria-live="polite">
         {toasts.map(toast => (
@@ -466,7 +512,7 @@ export default function UniversalApp({ onSignOut }) {
           <div className="logo"><Sparkles size={20} /></div>
           <div>
             <b>InsightOps AI</b>
-            <span>UNIVERSAL DATA INTELLIGENCE</span>
+            <span>ENTERPRISE BI SAAS</span>
           </div>
         </div>
 
@@ -505,6 +551,78 @@ export default function UniversalApp({ onSignOut }) {
             )}
           </div>
           <div className="header-actions">
+            {/* Global Search Trigger */}
+            <button
+              type="button"
+              className="global-search-trigger"
+              onClick={() => setSearchModalOpen(true)}
+              title="Search reports, datasets, workspaces (Cmd+K)"
+            >
+              <Search size={14} />
+              <span>Search...</span>
+              <span className="kbd-shortcut">⌘K</span>
+            </button>
+
+            {/* Workspace Selector Dropdown */}
+            <div className="workspace-selector-dropdown">
+              <button
+                type="button"
+                className="workspace-badge-btn"
+                onClick={() => setWsDropdownOpen(o => !o)}
+                title="Switch active workspace"
+              >
+                <Layers size={14} color="#e6c348" />
+                <span>{activeWorkspace?.name || "Production Analytics"}</span>
+                <ChevronDown size={14} />
+              </button>
+              {wsDropdownOpen && (
+                <div className="workspace-dropdown-menu">
+                  <div style={{ padding: "6px 10px", fontSize: "11px", fontWeight: "700", color: "#8a8370", textTransform: "uppercase" }}>
+                    Select Workspace
+                  </div>
+                  {(workspaces || []).map(ws => (
+                    <button
+                      key={ws.id}
+                      type="button"
+                      className={`workspace-item ${activeWorkspace?.id === ws.id ? "active" : ""}`}
+                      onClick={() => {
+                        switchWorkspace(ws.id);
+                        setWsDropdownOpen(false);
+                        addToast(`Switched to workspace: ${ws.name}`, "success");
+                      }}
+                    >
+                      <span>{ws.name}</span>
+                      <span className="role-tag">{ws.role || "Member"}</span>
+                    </button>
+                  ))}
+                  <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", marginTop: "6px", paddingTop: "6px" }}>
+                    <button
+                      type="button"
+                      className="dropdown-link"
+                      onClick={() => {
+                        setActiveView("workspaces");
+                        setWsDropdownOpen(false);
+                      }}
+                    >
+                      <Plus size={14} /> Manage All Workspaces
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Theme Toggle */}
+            <button
+              className="icon-action"
+              type="button"
+              onClick={() => setTheme(t => t === "dark" ? "light" : "dark")}
+              title={`Switch to ${theme === "dark" ? "Light" : "Dark"} Mode`}
+              aria-label="Toggle theme"
+            >
+              {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+            </button>
+
+            {/* Upload Dataset Button */}
             <button
               className="upload"
               type="button"
@@ -514,6 +632,7 @@ export default function UniversalApp({ onSignOut }) {
               <Upload size={17} />
               {uploading ? "Analyzing..." : "Upload Dataset"}
             </button>
+
             {profile && (
               <>
                 <a className="icon-action" href={`${API_BASE}/api/dataset/export-clean${datasetQuery}`} title="Download Cleaned CSV" aria-label="Download Cleaned CSV">
@@ -529,9 +648,63 @@ export default function UniversalApp({ onSignOut }) {
                 <Trash2 size={17} />
               </button>
             )}
-            <button className="icon-action sign-out-action" type="button" onClick={onSignOut} aria-label="Sign out" title="Sign out">
-              <LogOut size={17} />
-            </button>
+
+            {/* User Profile Menu */}
+            <div className="user-profile-menu">
+              <button
+                type="button"
+                className="user-avatar-btn"
+                onClick={() => setUserDropdownOpen(o => !o)}
+                title="Account menu"
+              >
+                <div className="avatar-circle">
+                  {user?.avatar_url ? <img src={user.avatar_url} alt="" /> : (user?.full_name?.charAt(0) || "A")}
+                </div>
+              </button>
+              {userDropdownOpen && (
+                <div className="user-dropdown-card">
+                  <div className="user-dropdown-header">
+                    <strong>{user?.full_name || "Administrator"}</strong>
+                    <span>{user?.email || "admin@insightops.ai"}</span>
+                    <div style={{ marginTop: "4px" }}>
+                      <span className="saas-badge admin" style={{ fontSize: "10px" }}>
+                        {activeWorkspace?.role || "Owner"}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="dropdown-link"
+                    onClick={() => { setActiveView("workspaces"); setUserDropdownOpen(false); }}
+                  >
+                    <Layers size={15} /> Workspaces & Team
+                  </button>
+                  <button
+                    type="button"
+                    className="dropdown-link"
+                    onClick={() => { setActiveView("settings"); setUserDropdownOpen(false); }}
+                  >
+                    <Sliders size={15} /> Settings & Telemetry
+                  </button>
+                  <button
+                    type="button"
+                    className="dropdown-link"
+                    onClick={() => { setActiveView("activity"); setUserDropdownOpen(false); }}
+                  >
+                    <Activity size={15} /> Audit Log
+                  </button>
+                  <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", marginTop: "6px", paddingTop: "6px" }}>
+                    <button
+                      type="button"
+                      className="dropdown-link danger"
+                      onClick={() => { setUserDropdownOpen(false); onSignOut ? onSignOut() : logout(); }}
+                    >
+                      <LogOut size={15} /> Sign Out
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           <input
             ref={fileInput}
@@ -581,101 +754,16 @@ export default function UniversalApp({ onSignOut }) {
         {error && <p className="notice error" role="alert">{error}</p>}
         {loading && <p className="muted page-loading">Loading dataset analytics...</p>}
 
-        {/* 1. OVERVIEW VIEW */}
-        {!loading && profile && activeView === "overview" && (
-          <>
-            <section className="dataset-type glass">
-              <div>
-                <span>DATASET CLASSIFICATION</span>
-                <h2>{profile.dataset_type}</h2>
-                <p>Confidence {Math.round(profile.dataset_type_confidence * 100)}% · {profile.rows.toLocaleString()} records · Quality {profile.quality_score}%</p>
-              </div>
-              <div className="entity-list">
-                {profile.detected_entities.map(entity => <span key={entity}>{entity}</span>)}
-              </div>
-            </section>
-
-            {/* Dynamic KPIs */}
-            <section className="stats dynamic-kpis">
-              {kpis.map(item => <KpiCard key={item.label} item={item} compact={compactNumbers} />)}
-            </section>
-
-            {/* PII Alert if present */}
-            {profile.sensitive_columns?.length > 0 && (
-              <div className="pii-notice">
-                <AlertTriangle size={18} />
-                <div>
-                  <b>Sensitive columns detected & protected</b>
-                  <p>{profile.sensitive_columns.map(c => `${c.original_name || c.name} (${c.semantic_type})`).join(" · ")}. Values are securely masked in previews and analysis.</p>
-                </div>
-              </div>
-            )}
-
-            {/* Power BI-Style Dynamic Visualization Engine */}
-            <section className="bi-dashboard-section" style={{ margin: "1.5rem 0" }}>
-              <div className="section-head-box" style={{ marginBottom: "1rem" }}>
-                <span className="badge-tag">POWER BI VISUALIZATION ENGINE</span>
-                <h2 style={{ fontSize: "1.35rem", margin: "0.25rem 0", color: "#f8fafc" }}>Live Interactive BI Studio</h2>
-                <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-                  Multi-page reports, dynamic slicers, cross-filtering, and drag-and-drop visual builder.
-                </p>
-              </div>
-              <PowerBIDashboard
-                datasetId={datasetId}
-                schema={schema}
-                dimensions={profile.dimensions || []}
-                baseCharts={charts}
-                kpis={kpis}
-                profile={profile}
-                onNavigateToDataset={() => {
-                  setActiveView("data");
-                  setActiveSection("Data Table");
-                }}
-              />
-            </section>
-
-            {/* Insights & Quality */}
-            <section className="grid two insight-grid">
-              <div className="panel glass">
-                <span>AI-DRIVEN VERIFIED INSIGHTS</span>
-                <h2>Key Findings & Drivers</h2>
-                {insights.length ? (
-                  insights.map((item, index) => (
-                    <div className="insight-row" key={`${item.title}-${index}`}>
-                      <b>{item.title}</b>
-                      <p>{item.text}</p>
-                      <small>Source: {item.source_columns?.join(", ") || "Dataset"} · Formula: {item.calculation}</small>
-                    </div>
-                  ))
-                ) : (
-                  <p className="muted">No high-confidence insights were detected.</p>
-                )}
-              </div>
-
-              <div className="panel glass">
-                <span>DATA QUALITY HEALTH</span>
-                <h2>{quality.overall_score}% Quality Score</h2>
-                {Object.entries(quality.components).map(([name, value]) => (
-                  <div className="quality-meter" key={name}>
-                    <span>{name.replaceAll("_", " ")}</span>
-                    <div className="meter"><i style={{ width: `${value}%` }} /></div>
-                    <b>{value}%</b>
-                  </div>
-                ))}
-                <p className="muted" style={{ marginTop: 14 }}>
-                  {quality.missing_values.toLocaleString()} missing cells · {quality.duplicate_rows.toLocaleString()} duplicate rows · {quality.invalid_values.toLocaleString()} invalid values
-                </p>
-                <button
-                  type="button"
-                  className="btn-view-changes"
-                  style={{ marginTop: 10 }}
-                  onClick={() => setViewChangesOpen(true)}
-                >
-                  <Eye size={14} /> View Cleaning Changes
-                </button>
-              </div>
-            </section>
-          </>
+        {/* 1. SAAS DASHBOARD OVERVIEW VIEW */}
+        {activeView === "overview" && (
+          <SaaSDashboardView
+            onNavigate={(view, extra) => {
+              setActiveView(view);
+              if (extra?.datasetId) loadDataset(extra.datasetId);
+            }}
+            datasetId={datasetId}
+            datasetProfile={profile}
+          />
         )}
 
         {/* 2. BI STUDIO VIEW */}
@@ -1323,82 +1411,33 @@ export default function UniversalApp({ onSignOut }) {
           </section>
         )}
 
-        {/* 7. ALERTS VIEW */}
-        {!loading && profile && activeView === "alerts" && (
-          <section className="panel glass page-panel alert-list">
-            <div className="panel-head">
-              <div>
-                <span>DATA QUALITY MONITORING</span>
-                <h2>Active Alerts</h2>
-                <p className="muted">Automated checks covering missing values, duplicates, and type consistency.</p>
-              </div>
-            </div>
-            {alerts.map((item, idx) => (
-              <div className="signal" key={idx}>
-                <AlertTriangle size={18} />
-                <div style={{ flex: 1 }}>
-                  <b>{item.title}</b>
-                  <p>{item.detail}</p>
-                  <small className="source-note">Source: {item.source_columns?.join(", ") || "Dataset-wide check"}</small>
-                </div>
-                <span className={`severity-badge ${item.severity || "medium"}`}>{item.severity || "medium"}</span>
-              </div>
-            ))}
-          </section>
+        {/* 7. ALERTS CENTER VIEW */}
+        {activeView === "alerts" && (
+          <AlertsCenterView datasetId={datasetId} addToast={addToast} />
         )}
 
-        {/* 8. REPORTS VIEW */}
-        {!loading && profile && activeView === "reports" && (
-          <section className="panel glass page-panel report-view">
-            <div className="panel-head">
-              <div>
-                <span>GENERATED EXECUTIVE REPORT</span>
-                <h2>{profile.filename} Intelligence Report</h2>
-              </div>
-              <div className="studio-actions">
-                <a className="upload download-clean" href={`${API_BASE}/api/dataset/report?dataset_id=${encodeURIComponent(datasetId)}`} download={`${profile.filename}.analysis.json`}>
-                  <Download size={15} /> Export JSON
-                </a>
-                <button className="upload" type="button" onClick={() => window.print()}>
-                  <FileText size={15} /> Print / Save PDF
-                </button>
-              </div>
-            </div>
-
-            <div className="dataset-summary">
-              <div><span>Dataset</span><strong>{profile.filename}</strong></div>
-              <div><span>Records</span><strong>{profile.rows.toLocaleString()}</strong></div>
-              <div><span>Quality Score</span><strong>{profile.quality_score}%</strong></div>
-              <div><span>Domain</span><strong>{profile.dataset_type}</strong></div>
-              <div><span>Active Alerts</span><strong>{alerts.length}</strong></div>
-            </div>
-
-            <h3>Key Performance Indicators</h3>
-            <div className="report-kpis">
-              {kpis.map(item => (
-                <p key={item.label}>
-                  <b>{item.label}:</b> {formatValue(item, compactNumbers)} <small>({item.source_columns?.join(", ") || "Profile"})</small>
-                </p>
-              ))}
-            </div>
-
-            <h3>Evidence-Backed Insights</h3>
-            {insights.map((item, idx) => (
-              <div className="insight-row" key={idx}>
-                <b>{item.title}</b>
-                <p>{item.text}</p>
-                <small>Source: {item.source_columns?.join(", ")} · {item.calculation}</small>
-              </div>
-            ))}
-
-            <h3>Quality Issues & Active Alerts</h3>
-            {alerts.map((item, idx) => (
-              <p key={idx}><b>{item.title}:</b> {item.detail}</p>
-            ))}
-          </section>
+        {/* 8. REPORTS MANAGER VIEW */}
+        {activeView === "reports" && (
+          <ReportsManagerView
+            onNavigate={(view, extra) => {
+              setActiveView(view);
+              if (extra?.datasetId) loadDataset(extra.datasetId);
+            }}
+            addToast={addToast}
+          />
         )}
 
-        {/* 9. DATASET VIEW (Live Workspace) */}
+        {/* 9. WORKSPACES & RBAC VIEW */}
+        {activeView === "workspaces" && (
+          <WorkspacesView addToast={addToast} />
+        )}
+
+        {/* 10. AUDIT & ACTIVITY VIEW */}
+        {activeView === "activity" && (
+          <ActivityLogView addToast={addToast} />
+        )}
+
+        {/* 11. DATASET VIEW (Live Workspace) */}
         {!loading && profile && activeView === "dataset" && (
           <section className="panel glass page-panel">
             <div className="panel-head">
@@ -1431,48 +1470,13 @@ export default function UniversalApp({ onSignOut }) {
           </section>
         )}
 
-        {/* 10. SETTINGS VIEW */}
-        {!loading && profile && activeView === "settings" && (
-          <section className="panel glass page-panel settings-view">
-            <div className="panel-head">
-              <div>
-                <span>PLATFORM PREFERENCES</span>
-                <h2>Display & Privacy Settings</h2>
-              </div>
-            </div>
-
-            <label className="setting-row" style={{ display: "flex", justifyContent: "space-between", padding: "16px 0", borderBottom: "1px solid #ffffff12" }}>
-              <span>
-                <b>Compact Metric Notation</b>
-                <small style={{ display: "block", color: "#8c8572" }}>Format numbers using K / M shorthand for compact card presentation.</small>
-              </span>
-              <input
-                type="checkbox"
-                checked={compactNumbers}
-                onChange={e => {
-                  setCompactNumbers(e.target.checked);
-                  localStorage.setItem("insightops.compactNumbers", String(e.target.checked));
-                  addToast("Preferences saved.");
-                }}
-              />
-            </label>
-
-            <div className="setting-row" style={{ display: "flex", justifyContent: "space-between", padding: "16px 0", borderBottom: "1px solid #ffffff12" }}>
-              <span>
-                <b>Deterministic PII Masking</b>
-                <small style={{ display: "block", color: "#8c8572" }}>Emails and phone numbers are irreversibly masked before analytics processing.</small>
-              </span>
-              <ShieldCheck size={20} style={{ color: "#e6c348" }} />
-            </div>
-
-            <div className="setting-row" style={{ display: "flex", justifyContent: "space-between", padding: "16px 0" }}>
-              <span>
-                <b>Storage Engine</b>
-                <small style={{ display: "block", color: "#8c8572" }}>Dataset files are stored locally under <code>data/uploads/</code>.</small>
-              </span>
-              <Database size={20} style={{ color: "#e6c348" }} />
-            </div>
-          </section>
+        {/* 12. SETTINGS & SYSTEM HEALTH VIEW */}
+        {activeView === "settings" && (
+          <ProfileSettingsView
+            compactNumbers={compactNumbers}
+            setCompactNumbers={setCompactNumbers}
+            addToast={addToast}
+          />
         )}
 
         {/* PREVIEW MODAL */}

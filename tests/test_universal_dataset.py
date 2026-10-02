@@ -386,3 +386,42 @@ def test_quality_components_stay_bounded_when_all_typed_values_are_invalid():
     }), "invalid.csv")
     assert all(0 <= value <= 100 for value in report["quality"]["components"].values())
     assert report["quality"]["invalid_values"] == 4
+
+
+def test_csv_with_windows_1252_en_dash_decodes_cleanly(client):
+    # Construct CSV where 0x96 (CP1252 en-dash) is present both before and after 65KB
+    content = bytearray(b"order_id,region_range,sales\n")
+    while len(content) < 5420:
+        content.extend(b"100,North-Zone,50.5\n")
+    content.extend(b"101,Region\x96East,75.0\n")  # 0x96 around position 5432
+    while len(content) < 70000:
+        content.extend(b"102,South-Zone,60.0\n")
+    content.extend(b"103,Mid\x96West,120.0\n")    # 0x96 past 65536 bytes
+    raw_bytes = bytes(content)
+
+    from backend.app.services.ingestion import detect_csv_encoding_and_delimiter, read_dataset_frame
+    enc, delim = detect_csv_encoding_and_delimiter(raw_bytes)
+    assert enc in ("cp1252", "latin-1")
+    assert delim == ","
+
+    frame, frame_enc, _ = read_dataset_frame(raw_bytes, ".csv")
+    assert frame_enc in ("cp1252", "latin-1")
+    assert "Region–East" in frame["region_range"].values or "Region" in "".join(frame["region_range"].values)
+
+    # Test preview API
+    preview_res = client.post(
+        "/api/datasets/preview",
+        files={"file": ("windows_data.csv", raw_bytes, "text/csv")}
+    )
+    assert preview_res.status_code == 200
+    preview_data = preview_res.json()
+    assert preview_data["total_columns"] == 3
+    assert preview_data["encoding"] in ("cp1252", "latin-1")
+
+    # Test upload API
+    upload_res = upload(client, "windows_data.csv", raw_bytes)
+    assert upload_res.status_code == 200
+    report = upload_res.json()
+    assert report["rows"] > 100
+    assert report["encoding"] in ("cp1252", "latin-1")
+

@@ -5,105 +5,108 @@ Interactive OpenAPI / Swagger documentation is available at `http://localhost:80
 
 ---
 
-## Ingestion & Upload Endpoints
+## 1. Authentication & User Endpoints
 
-### 1. Ingestion Preview (Dry Run)
-- **Endpoint**: `POST /api/datasets/preview`
-- **Content-Type**: `multipart/form-data`
-- **Parameters**:
-  - `file`: CSV, XLSX, or XLS file binary (up to 50 MB)
-  - `sheet_name` *(optional)*: Target sheet name for Excel workbooks
-- **Response**:
-  ```json
-  {
-    "filename": "sales.csv",
-    "file_size": 24192,
-    "extension": "csv",
-    "sheets": [],
-    "detected_delimiter": ",",
-    "detected_encoding": "utf-8",
-    "row_count_estimate": 100,
-    "columns": [
-      {"name": "revenue", "inferred_type": "numeric"},
-      {"name": "region", "inferred_type": "categorical"}
-    ],
-    "sample_rows": [
-      {"revenue": 1200.5, "region": "North"}
-    ]
-  }
-  ```
-
-### 2. Dataset Upload & Ingestion
-- **Endpoint**: `POST /api/datasets/upload` (or `POST /api/dataset/upload`)
-- **Content-Type**: `multipart/form-data`
-- **Parameters**:
-  - `file`: CSV, XLSX, or XLS file binary
-  - `sheet_name` *(optional)*: Sheet selection for Excel workbooks
-- **Response**: Full Dataset Profile object containing `dataset_id`, `dataset_type`, `quality_score`, `kpis`, `charts`, `insights`, `anomalies`, `forecast`, and `cleaning_report`.
-
----
-
-## Analytics & Profile Endpoints
-
-All analytics endpoints support both path-based routing (`/api/datasets/{dataset_id}/...`) and query-parameter routing (`/api/dataset/...`):
-
-| Path Route | Query Parameter Route | Method | Description |
+| Endpoint | Method | Auth Required | Description |
 | :--- | :--- | :--- | :--- |
-| `/api/datasets/{id}` | `/api/dataset?dataset_id={id}` | `GET` | Summary metadata for active dataset session |
-| `/api/datasets/{id}/profile` | `/api/dataset/profile?dataset_id={id}` | `GET` | Full statistical profile, health scores, and metrics |
-| `/api/datasets/{id}/schema` | `/api/dataset/schema?dataset_id={id}` | `GET` | Detected column types, uniqueness, and PII flags |
-| `/api/datasets/{id}/quality` | `/api/dataset/quality?dataset_id={id}` | `GET` | Overall score and component sub-scores (0–100) |
-| `/api/datasets/{id}/kpis` | `/api/dataset/kpis?dataset_id={id}` | `GET` | Domain-tailored KPIs with mathematical formulas |
-| `/api/datasets/{id}/visualizations` | `/api/dataset/charts?dataset_id={id}` | `GET` | Auto-generated chart recommendations & series data |
-| `/api/datasets/{id}/visualize/query` | `/api/dataset/visualize/query?dataset_id={id}` | `POST` | Dynamic visual aggregation query (Power BI engine) |
-| `/api/datasets/{id}/insights` | `/api/dataset/insights?dataset_id={id}` | `GET` | Verifiable natural language findings & calculations |
-| `/api/datasets/{id}/anomalies` | `/api/dataset/anomalies?dataset_id={id}` | `GET` | Multi-method outlier list with severity scores |
-| `/api/datasets/{id}/forecast` | `/api/dataset/forecast?dataset_id={id}` | `GET` | Double Exponential Smoothing forecast with 95% CIs |
-| `/api/datasets/{id}/alerts` | `/api/dataset/alerts?dataset_id={id}` | `GET` | Operational warnings & threshold alerts |
-| `/api/datasets/{id}/report` | `/api/dataset/report?dataset_id={id}` | `GET` | Complete audit and analytical JSON report |
-| `/api/datasets/{id}` | `/api/datasets/{id}` | `DELETE` | Removes session from disk (except demo fixtures) |
+| `/api/auth/signup` | `POST` | No | Registers user, hashes password via PBKDF2, generates JWT tokens and initial workspace |
+| `/api/auth/login` | `POST` | No | Verifies credentials and issues HS256 access and refresh tokens |
+| `/api/auth/refresh` | `POST` | No | Exchanges refresh token for new access token |
+| `/api/auth/me` | `GET` | Yes (Bearer) | Returns active user profile, organizations, and workspaces |
+| `/api/auth/profile` | `PUT` | Yes (Bearer) | Updates full name, avatar URL, theme preference, and number notation |
+| `/api/auth/password` | `PUT` | Yes (Bearer) | Changes user password after validating current password |
+| `/api/auth/forgot-password` | `POST` | No | Requests secure password reset verification token |
+| `/api/auth/reset-password` | `POST` | No | Resets password using verification token |
+| `/api/auth/logout` | `POST` | Yes (Bearer) | Logs logout event in audit trail and invalidates session |
 
 ---
 
-## AI Analyst Query Endpoint
+## 2. Workspaces & RBAC Endpoints
 
-- **Endpoint**: `POST /api/datasets/{dataset_id}/ask` (or `POST /api/analyst/ask`)
-- **Content-Type**: `application/json`
+| Endpoint | Method | Auth Required | Description |
+| :--- | :--- | :--- | :--- |
+| `/api/workspaces` | `GET` | Yes (Bearer) | Lists all workspaces the user has access to |
+| `/api/workspaces` | `POST` | Yes (Bearer) | Creates a new workspace and designates caller as Owner |
+| `/api/workspaces/{id}` | `GET` | Yes (Bearer) | Fetches workspace details and metadata |
+| `/api/workspaces/{id}` | `PUT` | Yes (Bearer) | Updates workspace name and description (Admin/Owner) |
+| `/api/workspaces/{id}` | `DELETE` | Yes (Bearer) | Deletes workspace and associated resources (Owner) |
+| `/api/workspaces/{id}/members` | `GET` | Yes (Bearer) | Lists members and their roles |
+| `/api/workspaces/{id}/members` | `POST` | Yes (Bearer) | Invites / adds user by email with role (Admin/Owner) |
+| `/api/workspaces/{id}/members/{user_id}` | `PUT` | Yes (Bearer) | Changes member role (Owner, Admin, Analyst, Viewer) |
+| `/api/workspaces/{id}/members/{user_id}` | `DELETE` | Yes (Bearer) | Removes member from workspace |
+
+---
+
+## 3. Reports Manager Endpoints
+
+| Endpoint | Method | Auth Required | Description |
+| :--- | :--- | :--- | :--- |
+| `/api/reports` | `GET` | Optional | Lists saved reports in active workspace |
+| `/api/reports` | `POST` | Yes (Bearer) | Creates multi-page report with visuals and schedule settings |
+| `/api/reports/{id}` | `GET` | Optional | Retrieves report definition (supports public shared reports) |
+| `/api/reports/{id}` | `PUT` | Yes (Bearer) | Updates report title, pages layout, and schedule |
+| `/api/reports/{id}` | `DELETE` | Yes (Bearer) | Deletes saved report |
+| `/api/reports/{id}/duplicate` | `POST` | Yes (Bearer) | Clones a report and all its pages |
+| `/api/reports/{id}/share` | `POST` | Yes (Bearer) | Toggles public sharing link and permission level |
+
+---
+
+## 4. Alerts Center Endpoints
+
+| Endpoint | Method | Auth Required | Description |
+| :--- | :--- | :--- | :--- |
+| `/api/alerts` | `GET` | Optional | Lists configured alert monitoring rules |
+| `/api/alerts` | `POST` | Yes (Bearer) | Creates threshold, anomaly, or KPI alert rule |
+| `/api/alerts/{id}/toggle` | `POST` | Yes (Bearer) | Toggles alert rule active / paused state |
+| `/api/alerts/{id}` | `DELETE` | Yes (Bearer) | Deletes an alert monitoring rule |
+| `/api/alerts/notifications` | `GET` | Optional | Dynamically evaluates active dataset against all active rules and returns triggered notifications feed |
+
+---
+
+## 5. Activity Audit Trail & System Endpoints
+
+| Endpoint | Method | Auth Required | Description |
+| :--- | :--- | :--- | :--- |
+| `/api/activity` | `GET` | Optional | Retrieves chronological audit events with filtering by action |
+| `/api/search` | `GET` | Optional | Universal spotlight search across reports, datasets, workspaces, and alerts |
+| `/api/system/health` | `GET` | No | Real-time database telemetry, engine dialect, ORM table row counts, uptime, and version |
+
+---
+
+## 6. Power BI Visualization Query Engine
+
+- **Endpoint**: `POST /api/dataset/visualize/query` (or `/api/datasets/{id}/visualize/query`)
 - **Request Body**:
   ```json
   {
-    "dataset_id": "session-12345",
-    "question": "What is the average salary by department?"
+    "visual_type": "column",
+    "x_field": "category",
+    "y_field": "revenue",
+    "aggregation": "sum",
+    "secondary_dimension": "region",
+    "date_granularity": "month",
+    "filters": {"region": ["North", "South"]},
+    "top_n": 10
   }
   ```
-- **Response**:
-  ```json
-  {
-    "question": "What is the average salary by department?",
-    "answer": "Department Engineering has the highest average salary at ₹12.4L across 4 employees.",
-    "evidence": [
-      {"label": "Top Department", "value": "Engineering"},
-      {"label": "Average Salary", "value": "124,000"}
-    ],
-    "source_columns": ["department", "salary"],
-    "calculation": "GROUP_BY(department) -> AVG(salary)"
-  }
-  ```
+- **Response**: Aggregated data points, series keys, formatting metadata, and sparklines.
 
 ---
 
-## Data Grid Explorer & Export Endpoints
+## 7. Universal Dataset & Analytics Endpoints
 
-### 1. Paginated Rows Explorer
-- **Endpoint**: `GET /api/dataset/rows` or `GET /api/datasets/{dataset_id}/rows`
-- **Query Parameters**:
-  - `dataset_id`: Session ID
-  - `page`: Page index (default: `1`)
-  - `page_size`: Rows per page (default: `25`, max: `100`)
-  - `search`: Substring search query across all non-sensitive columns
-  - `sort_by`: Column name to sort on
-  - `sort_order`: `asc` or `desc`
-
-### 2. Export Cleaned Dataset
-- **Cleaned CSV**: `GET /api/datasets/{dataset_id}/download` (or `/api/dataset/export-clean?dataset_id={id}`)
-- **Cleaned Excel (.xlsx)**: `GET /api/datasets/{dataset_id}/download.xlsx` (or `/api/dataset/export-clean.xlsx?dataset_id={id}`)
+| Endpoint | Method | Description |
+| :--- | :--- | :--- |
+| `POST /api/datasets/preview` | `POST` | Dry run inspection with delimiter, encoding, and sheet sniffer |
+| `POST /api/datasets/upload` | `POST` | Ingests dataset, executes cleaning pipeline, builds profile |
+| `GET /api/dataset/profile` | `GET` | Comprehensive statistical summary and health score |
+| `GET /api/dataset/schema` | `GET` | Semantic column types and PII indicators |
+| `GET /api/dataset/quality` | `GET` | Quality breakdown (completeness, validity, uniqueness) |
+| `GET /api/dataset/kpis` | `GET` | Dynamically calculated domain KPIs with formulas |
+| `GET /api/dataset/insights` | `GET` | Evidence-backed natural language findings |
+| `GET /api/dataset/anomalies` | `GET` | Multi-model statistical outlier list |
+| `GET /api/dataset/forecast` | `GET` | Double exponential smoothing time-series forecast |
+| `POST /api/dataset/ask` | `POST` | Deterministic AI Analyst query engine |
+| `GET /api/dataset/table` | `GET` | Paginated, searchable, sorted data table with PII masking |
+| `GET /api/dataset/export-clean` | `GET` | Download cleaned CSV |
+| `GET /api/dataset/export-clean.xlsx` | `GET` | Download cleaned Excel workbook |

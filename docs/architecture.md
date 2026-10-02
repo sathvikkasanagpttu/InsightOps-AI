@@ -5,8 +5,8 @@
 InsightOps AI operates on four fundamental engineering invariants:
 1. **Dynamic Schema-Agnostic Intelligence**: The platform never relies on static column names or pre-baked dashboards. All schemas, semantic roles, data types, KPIs, chart selections, and analytical queries are derived at runtime from the uploaded dataset.
 2. **Deterministic, Traceable Computations**: No hallucinations. Every single KPI, anomaly, chart, and AI Analyst answer is grounded in verifiable mathematical operations with source column lineage and explicit formulas.
-3. **Non-Destructive Ingestion**: The raw uploaded file is preserved unaltered under `data/uploads/<dataset_id>/source.*`. All cleaning actions (whitespace trimming, date standardization, currency normalization) are performed on an isolated working copy and documented in a granular before/after diff audit trail.
-4. **Resilient Local & Production Operation**: Works out-of-the-box locally with disk-backed sessions, while remaining modular and containerized for multi-tenant cloud deployments.
+3. **Enterprise SaaS Security & Multi-Tenancy**: Built on RFC 7519 HS256 JWT authentication, NIST PBKDF2 password hashing, and granular Role-Based Access Control (RBAC) across isolated team workspaces.
+4. **Resilient Local & Production Operation**: Works out-of-the-box locally with SQLite and disk-backed sessions, while seamlessly scaling to PostgreSQL and containerized cloud environments with Docker Compose.
 
 ---
 
@@ -14,88 +14,84 @@ InsightOps AI operates on four fundamental engineering invariants:
 
 ```mermaid
 flowchart TD
-    subgraph Client["Presentation Tier (React + Vite)"]
-        UI["UniversalApp (SPA)"]
-        Studio["Data Ingestion Studio"]
-        Overview["Adaptive KPI Dashboard"]
-        Analyst["Deterministic AI Analyst"]
-        EDA["Exploratory Data Analysis"]
-        Grid["Data Table Explorer"]
-        Modals["[View Changes] & [Investigate] Modals"]
+    subgraph Client["Presentation Tier (React 19 + Vite + Lucide + Recharts)"]
+        AuthProvider["AuthProvider & JWT Token Handler"]
+        TopNav["SaaS Topbar (Workspace Switcher | Global Search ⌘K | Theme Toggle | Profile)"]
+        
+        subgraph SaaSViews["Operational SaaS Views"]
+            V_Dash["SaaS Dashboard Overview"]
+            V_Studio["Power BI Visual Studio (18 Visuals & Slicers)"]
+            V_Data["Universal Data Ingestion Studio"]
+            V_Reports["Reports Manager & Scheduler"]
+            V_Analyst["Deterministic AI Analyst"]
+            V_EDA["Exploratory Data Analysis Workspace"]
+            V_Alerts["Alerts Center (Rules & Dynamic Feed)"]
+            V_WS["Workspaces & RBAC Management"]
+            V_Audit["Activity Audit Trail"]
+            V_Settings["User Profile & System Health"]
+        end
     end
 
-    subgraph API["Application Tier (FastAPI Microservices)"]
-        R_Upload["upload_router (/preview, /upload, /export)"]
-        R_Profile["profile_router (/profile, /schema, /quality)"]
-        R_Analysis["analysis_router (/ask, /summary)"]
-        R_Viz["visualization_router (/visualizations)"]
-        R_FC["forecast_router (/forecast)"]
-        R_Anom["anomalies_router (/anomalies)"]
-        R_Insights["insights_router (/insights)"]
-        R_Reports["reports_router (/report, /alerts)"]
+    subgraph API["Application Tier (FastAPI Python 3.12)"]
+        R_Auth["/api/auth (SignUp, Login, Refresh, Me, Reset)"]
+        R_WS["/api/workspaces (CRUD, Members, Roles)"]
+        R_Reports["/api/reports (Multi-Page, Share, Schedule)"]
+        R_Alerts["/api/alerts (Rules & Live Evaluator)"]
+        R_Activity["/api/activity (Immutable Audit Trail)"]
+        R_Search["/api/search (Universal Spotlight Search)"]
+        R_System["/api/system/health (Telemetry & Diagnostics)"]
+        R_Dataset["/api/dataset/* (Ingestion, Clean, Schema, Profile, Export)"]
+        R_Viz["/api/visualize/query (Power BI Aggregations & Slicers)"]
+        R_Analyst["/api/analyst/query (Deterministic AI Engine)"]
     end
 
-    subgraph Core["Analytical Engine (Services Tier)"]
-        S_Ingest["IngestionService (Encoding, Delimiter, Sheet sniffer)"]
-        S_Clean["CleaningEngine (Non-destructive normalization & diff)"]
-        S_Profile["ProfilingEngine (Statistical metrics & quality score)"]
+    subgraph Core["Analytical & Business Intelligence Core"]
+        S_Ingest["IngestionService (Encoding, Delimiter, Sheet Sniffer)"]
+        S_Clean["CleaningEngine (Non-Destructive Normalization & Diff)"]
+        S_Profile["ProfilingEngine (Statistical Profiler & Health Scorer)"]
         S_KPI["DynamicKPIEngine (Sales, HR, E-com, Finance, Health)"]
-        S_Chart["ChartEngine (Rule-based multi-type chart generator)"]
-        S_Anomaly["AnomalyEngine (IQR, Z-score, Isolation Forest)"]
-        S_Forecast["ForecastEngine (Holt-Winters exponential smoothing)"]
-        S_Insight["InsightEngine (Deterministic variance & skew analysis)"]
+        S_Viz["VisualQueryService (Dynamic Aggregations, Cross-Filtering)"]
+        S_Anomaly["AnomalyEngine (IQR, Z-Score, Isolation Forest)"]
+        S_Forecast["ForecastEngine (Double Exponential Smoothing)"]
+        S_Security["Security & Token Service (PBKDF2 & HS256 JWT)"]
     end
 
-    subgraph Storage["Persistence Tier"]
-        Store["DatasetStore (Session manager & cache)"]
-        RawFiles["data/uploads/<id>/source.*"]
-        CleanFiles["data/uploads/<id>/clean.*"]
-        ReportFiles["data/uploads/<id>/report.json"]
+    subgraph Persistence["Database & Persistence Tier"]
+        ORM["SQLAlchemy 2.0 ORM"]
+        Postgres[("PostgreSQL 16 (Production)")]
+        SQLite[("SQLite Fallback (Local Dev / Tests)")]
+        Store["DatasetStore (Raw & Cleaned CSV/Excel on Disk)"]
     end
 
-    UI --> API
+    Client --> API
     API --> Core
-    Core --> Storage
+    Core --> Persistence
 ```
 
 ---
 
-## 3. Core Engine Pipeline
+## 3. Database Schema Design (SQLAlchemy ORM)
 
-When a user submits a dataset via the Ingestion Studio, the pipeline executes sequentially:
+| Table | Primary Key | Key Attributes | Purpose |
+| :--- | :--- | :--- | :--- |
+| `users` | `id` (UUID) | `email`, `hashed_password`, `full_name`, `avatar_url`, `is_active`, `theme_preference` | User credentials and profile settings |
+| `organizations` | `id` (UUID) | `name`, `slug`, `owner_id` | Enterprise multi-tenancy parent boundary |
+| `workspaces` | `id` (String/UUID) | `organization_id`, `owner_id`, `name`, `description` | Isolated analytical environment |
+| `workspace_members` | `id` (UUID) | `workspace_id`, `user_id`, `role` (`Owner`, `Admin`, `Analyst`, `Viewer`) | Role-based access control binding |
+| `datasets` | `id` (String) | `workspace_id`, `name`, `filename`, `row_count`, `quality_score`, `storage_path` | Ingested universal datasets |
+| `reports` | `id` (UUID) | `workspace_id`, `title`, `description`, `pages` (JSON), `is_shared`, `schedule_frequency` | Multi-page reports with visuals and scheduling |
+| `dashboards` | `id` (UUID) | `workspace_id`, `report_id`, `name`, `layout` (JSON) | Live dashboard layouts |
+| `visual_items` | `id` (UUID) | `dashboard_id`, `title`, `visual_type`, `config` (JSON) | Individual Power BI visual definitions |
+| `alert_rules` | `id` (UUID) | `workspace_id`, `name`, `metric`, `condition_operator`, `threshold_value`, `severity`, `is_active` | Real-time threshold monitoring rules |
+| `activity_logs` | `id` (UUID) | `workspace_id`, `user_id`, `user_email`, `action`, `resource`, `ip_address`, `details` (JSON) | Immutable security audit trail |
 
-### Step 1: Ingestion & Format Sniffing (`services/ingestion.py`)
-- Detects encoding (UTF-8, Latin-1, CP1252) and delimiter (`,`, `;`, `\t`, `|`).
-- For Excel workbooks, lists available sheets and streams selected sheet into Pandas.
-- Emits masked preview samples for sensitive data before committing session.
+---
 
-### Step 2: Non-Destructive Cleaning (`services/cleaning.py`)
-- Sanitizes column names and trims whitespace.
-- Coerces currency strings (`$`, `€`, `£`, `₹`), removes commas, and resolves parenthesized negative numbers `(100)` -> `-100`.
-- Standardizes ISO date formats.
-- Identifies duplicate rows, empty columns, and constant columns.
-- Generates a granular column-by-column `cleaning_diff` tracking modified values, trimmed spaces, and coerced types.
+## 4. Power BI Visual Engine Architecture
 
-### Step 3: Statistical Profiling (`services/profiling.py`)
-- Classifies columns into 6 semantic types: `numeric`, `categorical`, `datetime`, `boolean`, `text`, and `id`.
-- Computes completeness, uniqueness, mean, median, standard deviation, quartiles (Q1, Q2, Q3), and IQR.
-- Calculates an overall Data Quality score (0–100) based on completeness, uniqueness, and format validity.
-
-### Step 4: Domain Classification & KPI Synthesis (`services/kpi_engine.py`)
-- Evaluates column token overlaps against 5 business domains: **Sales**, **HR**, **E-commerce**, **Finance**, and **Healthcare**.
-- Automatically synthesizes domain-appropriate primary KPIs (e.g. Total Revenue, Attrition Rate, Derived AOV, Recovery Rate) with transparent formulas.
-- Falls back to robust general-purpose statistical measures if no domain strongly matches.
-
-### Step 5: Visualizations & Correlations (`services/chart_engine.py`)
-- Temporal columns paired with numeric metrics yield Line and Area trends.
-- Categorical columns paired with numeric metrics yield Bar charts and Horizontal Rankings.
-- Proportional categories yield Donut and Pie charts.
-- Continuous numerical variables yield sampled Scatter Plots, Histograms, and a full Pearson Correlation Matrix.
-
-### Step 6: Anomaly Detection & Forecasting (`services/anomaly_engine.py`, `services/forecast_engine.py`)
-- Employs IQR fences ($1.5 \times \text{IQR}$), Z-scores ($\pm 3\sigma$), rolling deviations, and Isolation Forest.
-- Time-series aggregation provides 3-period forward projections with 95% confidence intervals using Double Exponential Smoothing (Holt's Linear).
-
-### Step 7: Deterministic AI Analyst (`dataset_engine.py`)
-- Tokenizes natural language questions into intent patterns: trend analysis, rankings, correlations, anomalies, forecasts, summary, or column statistics.
-- Executes verified aggregation logic against the cleaned dataset and returns the answer alongside supporting evidence cards, source column references, and formula syntax.
+The visual engine processes aggregated queries dynamically via `/api/visualize/query`:
+- **Dimensions & X-Axis**: Grouping by categorical fields or date hierarchy (`Year`, `Quarter`, `Month`, `Day`).
+- **Measures & Y-Axis**: Aggregated via `sum`, `avg`, `count`, `distinct_count`, `min`, `max`, `median`, or `pct`.
+- **Secondary Dimensions / Legend**: Produces stacked bar or multi-series clustered aggregations.
+- **Cross-Filtering**: Filters are applied dynamically to the DataFrame, re-aggregating remaining fields and generating dimmed visual cues for unselected slices.
+- **Auto Recommender**: Selects the optimal chart type (Column, Bar, Line, Area, Pie, Donut, Scatter, Box Plot, Heatmap, Funnel, Gauge, KPI Card) based on field cardinality and semantic types.
