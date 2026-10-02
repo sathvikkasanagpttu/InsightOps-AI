@@ -37,13 +37,16 @@
      - **Generic Fallback**: Record Count, Numeric Totals, Averages, Distributions.
    - Every metric reports `source_columns` and transparent mathematical calculation formulas.
 
-6. **Automatic Visualization Engine**
-   - Date + Numeric: Interactive Line & Area charts with trendlines.
-   - Categorical + Numeric: Dynamic bar charts and horizontal ranking.
-   - Category Proportions: Donut / Pie distribution charts.
-   - Numeric + Numeric: Scatter plots with correlation coefficients.
-   - Numeric Distribution: Dynamic histograms and box plots.
-   - Correlation Matrix: Dynamic Pearson correlation grid across numeric features.
+6. **Power BI-Style Dynamic Visualization Engine & Visual Builder**
+   - **18 Interactive Visual Types**: Column (vertical bar), Bar (horizontal ranking), Stacked Bar, Line, Area, Combo (dual-axis bar + line), Pie, Donut (with central KPI callout), Treemap (proportional rectangular tiles), Scatter, Bubble (sized 3rd measure), Histogram (frequency bins), Box Plot (whiskers, quartiles, median, outliers), Heatmap Matrix (2D intensity grid), Funnel Chart (conversion pipeline), Gauge (speedometer progress to target), KPI Hero Cards (value, target, variance %, sparkline), and Data Matrix Tables (with in-cell data bars).
+   - **Power BI Drag-and-Drop Visual Builder**: Field wells for X-Axis, Y-Axis, Legend/Secondary Dimension, Tooltip, Aggregation selector (`Sum`, `Average`, `Count`, `Distinct Count`, `Min`, `Max`, `Median`, `Percentage of Total`), and Date Hierarchy (`Auto`, `Year`, `Quarter`, `Month`, `Day`).
+   - **Auto-Select Chart Recommender**: Intelligently deduces the ideal visualization type based on assigned dimensions and measures.
+   - **Interactive Slicers & Filters**: Date range slicers with presets (All, 30D, 90D, YTD), multi-select category checkboxes, numeric sliders, and active cross-filter alerts.
+   - **Real-Time Cross-Filtering**: Clicking any bar, slice, tile, or cell filters all other visualizations on the dashboard page simultaneously, dimming non-matching elements.
+   - **Hierarchy Drill-Down & Drill-Up**: Supports temporal hierarchy navigation (Year $\rightarrow$ Quarter $\rightarrow$ Month $\rightarrow$ Day) and categorical drill-through.
+   - **Multi-Page Report Builder**: Tabbed report pages (Executive Overview, Dimensional Breakdown, Deep Dive, `+ Add Page`) with page renaming, duplication, and deletion.
+   - **Grid Controls & Customization**: Dynamic visual resizing (1/3, 1/2, 2/3, full width), reordering, duplication, deletion, and fullscreen modal inspection.
+   - **Multi-Format Export Suite**: Export individual visuals to high-res PNG (2x canvas rendering), CSV/Excel, and print-ready multi-page PDF formatting.
 
 7. **Adaptive Dashboard Layouts**
    - Adapts UI hierarchy and widgets dynamically according to the ingested dataset's schema.

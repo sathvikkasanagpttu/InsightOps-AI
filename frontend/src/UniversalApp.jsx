@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle, ArrowDown, ArrowUp, BarChart3, BrainCircuit, Check, CheckCircle2,
   ChevronDown, ChevronLeft, ChevronRight, Copy, Database, Download, Eye, FileSpreadsheet,
-  FileText, Filter, HelpCircle, Info, Layers, LogOut, Maximize2, RefreshCw, Search,
+  FileText, Filter, HelpCircle, Info, Layers, LayoutGrid, LogOut, Maximize2, RefreshCw, Search,
   Send, Share2, ShieldCheck, Sliders, Sparkles, Table, Trash2, TrendingDown, TrendingUp,
   Upload, X, Zap
 } from "lucide-react";
@@ -11,12 +11,14 @@ import {
   Pie, PieChart, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis
 } from "recharts";
 import { api } from "./lib/api";
+import PowerBIDashboard from "./components/visuals/PowerBIDashboard";
 import "./universal.css";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 const navItems = [
   { id: "overview", label: "Overview", icon: BarChart3 },
+  { id: "visuals", label: "BI Studio", icon: LayoutGrid },
   { id: "data", label: "Data Studio", icon: Database },
   { id: "analyst", label: "AI Analyst", icon: BrainCircuit },
   { id: "explore", label: "Explore", icon: Search },
@@ -434,6 +436,7 @@ export default function UniversalApp({ onSignOut }) {
 
   const heading = {
     overview: ["LIVE DATA INTELLIGENCE", profile?.dataset_type || "Dataset Overview", profile?.filename || "Dynamic inspection, cleaning and analytics."],
+    visuals: ["POWER BI VISUAL STUDIO", "Interactive BI Studio", profile?.filename || "Multi-page report builder, drag-and-drop visual designer and cross-filtering."],
     data: ["DATA INGESTION STUDIO", "Data Studio", profile?.filename || "Inspect schema, quality and cleaning pipeline."],
     analyst: ["VERIFIED AI ANALYST", "Ask Your Dataset", "Calculated analytics with 100% traceable source evidence."],
     explore: ["EXPLORATORY DATA ANALYSIS", "EDA Workspace", "Distributions, correlations, relationships and time trends."],
@@ -608,9 +611,27 @@ export default function UniversalApp({ onSignOut }) {
               </div>
             )}
 
-            {/* Dynamic Visualizations Grid */}
-            <section className="chart-grid">
-              {charts.map((chart, index) => <ChartPanel key={`${chart.title}-${index}`} chart={chart} />)}
+            {/* Power BI-Style Dynamic Visualization Engine */}
+            <section className="bi-dashboard-section" style={{ margin: "1.5rem 0" }}>
+              <div className="section-head-box" style={{ marginBottom: "1rem" }}>
+                <span className="badge-tag">POWER BI VISUALIZATION ENGINE</span>
+                <h2 style={{ fontSize: "1.35rem", margin: "0.25rem 0", color: "#f8fafc" }}>Live Interactive BI Studio</h2>
+                <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+                  Multi-page reports, dynamic slicers, cross-filtering, and drag-and-drop visual builder.
+                </p>
+              </div>
+              <PowerBIDashboard
+                datasetId={datasetId}
+                schema={schema}
+                dimensions={profile.dimensions || []}
+                baseCharts={charts}
+                kpis={kpis}
+                profile={profile}
+                onNavigateToDataset={() => {
+                  setActiveView("data");
+                  setActiveSection("Data Table");
+                }}
+              />
             </section>
 
             {/* Insights & Quality */}
@@ -657,7 +678,25 @@ export default function UniversalApp({ onSignOut }) {
           </>
         )}
 
-        {/* 2. DATA STUDIO VIEW */}
+        {/* 2. BI STUDIO VIEW */}
+        {!loading && profile && activeView === "visuals" && (
+          <section className="panel glass page-panel bi-studio-fullscreen" style={{ padding: "1.25rem", borderRadius: "16px" }}>
+            <PowerBIDashboard
+              datasetId={datasetId}
+              schema={schema}
+              dimensions={profile.dimensions || []}
+              baseCharts={charts}
+              kpis={kpis}
+              profile={profile}
+              onNavigateToDataset={() => {
+                setActiveView("data");
+                setActiveSection("Data Table");
+              }}
+            />
+          </section>
+        )}
+
+        {/* 3. DATA STUDIO VIEW */}
         {!loading && profile && activeView === "data" && (
           <section className="panel glass page-panel data-studio">
             <div className="panel-head">

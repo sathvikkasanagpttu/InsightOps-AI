@@ -55,6 +55,7 @@ All analytics endpoints support both path-based routing (`/api/datasets/{dataset
 | `/api/datasets/{id}/quality` | `/api/dataset/quality?dataset_id={id}` | `GET` | Overall score and component sub-scores (0–100) |
 | `/api/datasets/{id}/kpis` | `/api/dataset/kpis?dataset_id={id}` | `GET` | Domain-tailored KPIs with mathematical formulas |
 | `/api/datasets/{id}/visualizations` | `/api/dataset/charts?dataset_id={id}` | `GET` | Auto-generated chart recommendations & series data |
+| `/api/datasets/{id}/visualize/query` | `/api/dataset/visualize/query?dataset_id={id}` | `POST` | Dynamic visual aggregation query (Power BI engine) |
 | `/api/datasets/{id}/insights` | `/api/dataset/insights?dataset_id={id}` | `GET` | Verifiable natural language findings & calculations |
 | `/api/datasets/{id}/anomalies` | `/api/dataset/anomalies?dataset_id={id}` | `GET` | Multi-method outlier list with severity scores |
 | `/api/datasets/{id}/forecast` | `/api/dataset/forecast?dataset_id={id}` | `GET` | Double Exponential Smoothing forecast with 95% CIs |
