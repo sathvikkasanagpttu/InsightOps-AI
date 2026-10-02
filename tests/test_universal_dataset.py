@@ -82,6 +82,21 @@ def test_sales_dataset_uses_available_financial_kpis(client):
     assert report["forecast"]["metric"] == "revenue"
 
 
+def test_sales_category_charts_and_analyst_sum_revenue(client):
+    report = upload(client, "sales.csv", SALES_SAMPLE.read_bytes()).json()
+    chart = next(item for item in report["charts"] if item["title"] == "Revenue by category")
+    assert chart["y_label"] == "revenue"
+    assert sum(item["value"] for item in chart["data"]) == pytest.approx(56124429.68)
+
+    answer = client.post("/api/analyst/ask", json={
+        "dataset_id": report["dataset_id"],
+        "question": "Which region has the most revenue?",
+    }).json()
+    assert "South" in answer["answer"]
+    assert answer["source_columns"] == ["region", "revenue"]
+    assert answer["calculation"] == "SUM(revenue) grouped by region, sorted descending"
+
+
 def test_generic_dataset_is_accepted_without_a_date_or_sales_schema(client):
     content = b"Warehouse,Temperature\nNorth,18.5\nSouth,23.0\nNorth,19.5\n"
     response = upload(client, "measurements.csv", content)
@@ -120,6 +135,17 @@ def test_analyst_status_counts_use_uploaded_dataset(client):
     assert "Won" in answer["answer"]
     assert "Open" in answer["answer"]
     assert answer["source_columns"] == ["status"]
+
+
+def test_analyst_numeric_summary_uses_uploaded_values(client):
+    report = upload(client, "measurements.csv", b"Metric,Area\n10,North\n20,South\n30,North\n").json()
+    answer = client.post("/api/analyst/ask", json={
+        "dataset_id": report["dataset_id"],
+        "question": "What is the average metric?",
+    }).json()
+    assert "20.00" in answer["answer"]
+    assert answer["source_columns"] == ["metric"]
+    assert answer["calculation"] == "AVG(metric)"
 
 
 def test_dataset_endpoints_are_scoped_by_id(client):
@@ -228,3 +254,12 @@ def test_quality_alerts_include_missing_duplicates_invalid_pii_and_outliers():
     assert "Invalid phone" in titles
     assert "bad-email" not in str(report)
     assert "5550101001" not in str(report)
+
+
+def test_quality_components_stay_bounded_when_all_typed_values_are_invalid():
+    _, report = analyze_dataset(pd.DataFrame({
+        "Created": ["not-a-date", "also-bad"],
+        "Revenue": ["bad", "worse"],
+    }), "invalid.csv")
+    assert all(0 <= value <= 100 for value in report["quality"]["components"].values())
+    assert report["quality"]["invalid_values"] == 4

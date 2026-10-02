@@ -204,6 +204,11 @@ def _group_counts(frame: pd.DataFrame, column: str, limit: int = 10) -> list[dic
     return [{"label": value, "value": int(count)} for value, count in values.items()]
 
 
+def _group_sums(frame: pd.DataFrame, dimension: str, metric: str, limit: int = 10) -> list[dict]:
+    grouped = frame.groupby(dimension, dropna=True)[metric].sum().sort_values(ascending=False).head(limit)
+    return [{"label": str(value), "value": round(float(total), 2)} for value, total in grouped.items()]
+
+
 def _time_series(frame: pd.DataFrame, schema: list[dict], numeric_column: str | None) -> tuple[str | None, list[dict]]:
     date_column = _semantic_column(schema, "datetime") or _semantic_column(schema, "date")
     if not date_column:
@@ -232,9 +237,9 @@ def _generate_quality(frame: pd.DataFrame, schema: list[dict], cleaning: dict) -
     components = {
         "completeness": round(100 * (cells - missing) / cells, 1),
         "uniqueness": round(100 * (rows - duplicates) / max(rows, 1), 1),
-        "validity": round(100 * (cells - invalid) / cells, 1),
-        "consistency": round(100 * (rows - duplicates) / max(rows, 1), 1),
-        "type_correctness": round(100 * (typed_nonempty - invalid) / max(typed_nonempty, 1), 1),
+        "validity": round(100 * max(0, cells - invalid) / cells, 1),
+        "consistency": round(100 * max(0, rows - duplicates - invalid) / max(rows, 1), 1),
+        "type_correctness": round(100 * max(0, typed_nonempty) / max(typed_nonempty + invalid, 1), 1),
     }
     score = round(sum(components.values()) / len(components), 1)
     missing_by_column = [{"column": column["name"], "count": int(frame[column["name"]].isna().sum()),
@@ -252,19 +257,21 @@ def analyze_dataset(raw_frame: pd.DataFrame, filename: str) -> tuple[pd.DataFram
     frame, schema, cleaning = _clean_frame(raw_frame)
     quality = _generate_quality(frame, schema, cleaning)
     pii_columns = [column["name"] for column in schema if column["semantic_type"] in PII_SEMANTICS]
+    revenue_column = next((column["name"] for column in schema if column["semantic_type"] == "currency" and any(token in column["name"] for token in ("revenue", "sales", "amount", "total", "price", "value"))), None)
+    profit_column = next((column["name"] for column in schema if column["semantic_type"] == "currency" and any(token in column["name"] for token in ("profit", "earning"))), None)
     dimensions = []
     charts = []
     for column in schema:
         if column["semantic_type"] in DIMENSION_SEMANTICS and column["unique_count"] <= 30 and column["unique_count"] > 1:
             points = _group_counts(frame, column["name"])
             dimensions.append({"column": column["name"], "semantic_type": column["semantic_type"], "unique_count": column["unique_count"], "values": points})
-            charts.append({"kind": "bar", "title": f"Records by {column['original_name']}", "x_key": "label", "y_key": "value", "data": points, "source_columns": [column["name"]]})
+            chart_points = _group_sums(frame, column["name"], revenue_column) if revenue_column else points
+            measure = "revenue" if revenue_column else "records"
+            charts.append({"kind": "bar", "title": f"{'Revenue' if revenue_column else 'Records'} by {column['original_name']}", "x_key": "label", "y_key": "value", "y_label": measure, "data": chart_points, "source_columns": [column["name"]] + ([revenue_column] if revenue_column else [])})
 
-    revenue_column = next((column["name"] for column in schema if column["semantic_type"] == "currency" and any(token in column["name"] for token in ("revenue", "sales", "amount", "total", "price", "value"))), None)
-    profit_column = next((column["name"] for column in schema if column["semantic_type"] == "currency" and any(token in column["name"] for token in ("profit", "earning"))), None)
     date_column, record_trend = _time_series(frame, schema, revenue_column)
     if record_trend:
-        charts.append({"kind": "line", "title": f"{'Revenue' if revenue_column else 'Record creation'} trend", "x_key": "period", "y_key": "value", "data": record_trend, "source_columns": [date_column] + ([revenue_column] if revenue_column else [])})
+        charts.append({"kind": "line", "title": f"{'Revenue' if revenue_column else 'Record creation'} trend", "x_key": "period", "y_key": "value", "y_label": "revenue" if revenue_column else "records", "data": record_trend, "source_columns": [date_column] + ([revenue_column] if revenue_column else [])})
 
     kpis = [
         {"label": "Total Records", "value": int(len(frame)), "format": "count", "source_columns": []},
@@ -342,8 +349,17 @@ def analyze_dataset(raw_frame: pd.DataFrame, filename: str) -> tuple[pd.DataFram
     insights = []
     for dimension in dimensions:
         if dimension["values"]:
-            top = dimension["values"][0]
-            insights.append({"title": f"Top {dimension['semantic_type']}", "text": f"{top['label']} has the most records ({top['value']}).", "source_columns": [dimension["column"]], "calculation": f"COUNT(records) grouped by {dimension['column']}"})
+            if revenue_column:
+                top = _group_sums(frame, dimension["column"], revenue_column, limit=1)[0]
+                text = f"{top['label']} has the highest {revenue_column} ({top['value']:,.2f})."
+                calculation = f"SUM({revenue_column}) grouped by {dimension['column']}"
+                sources = [dimension["column"], revenue_column]
+            else:
+                top = dimension["values"][0]
+                text = f"{top['label']} has the most records ({top['value']})."
+                calculation = f"COUNT(records) grouped by {dimension['column']}"
+                sources = [dimension["column"]]
+            insights.append({"title": f"Top {dimension['semantic_type']}", "text": text, "source_columns": sources, "calculation": calculation})
     if date_column and record_trend:
         insights.append({"title": "Time coverage", "text": f"Records span {record_trend[0]['period']} through {record_trend[-1]['period']}.", "source_columns": [date_column], "calculation": "Minimum and maximum valid date"})
 
@@ -438,6 +454,29 @@ def generate_answer(frame: pd.DataFrame, report: dict, question: str) -> dict:
         if metadata["semantic_type"] in PII_SEMANTICS:
             count = int(frame[column].nunique(dropna=True))
             return _answer(question, f"There are {count:,} unique values in {metadata['original_name']}. Individual values are hidden because this field is sensitive.", [f"Unique values: {count:,}"], [column], f"COUNT(DISTINCT {column}); values masked")
+        metric_column = next((item["name"] for item in report["schema"] if item["semantic_type"] == "currency" and any(token in item["name"] for token in ("revenue", "sales", "amount", "total", "price", "value"))), None)
+        if metadata["semantic_type"] in DIMENSION_SEMANTICS and metric_column and any(token in query for token in ("revenue", "sales", "amount")):
+            values = _group_sums(frame, column, metric_column, limit=8)
+            if values:
+                answer = f"{values[0]['label']} has the highest {metric_column} ({values[0]['value']:,.2f})."
+                evidence = [f"{item['label']}: {item['value']:,.2f}" for item in values[:6]]
+                return _answer(question, answer, evidence, [column, metric_column], f"SUM({metric_column}) grouped by {column}, sorted descending")
+        if metadata["semantic_type"] in {"numeric", "currency", "percentage"}:
+            values = frame[column].dropna()
+            if not values.empty:
+                if any(token in query for token in ("average", "mean", "avg")):
+                    operation, result = "AVG", float(values.mean())
+                elif "median" in query:
+                    operation, result = "MEDIAN", float(values.median())
+                elif any(token in query for token in ("lowest", "minimum", "smallest")):
+                    operation, result = "MIN", float(values.min())
+                elif any(token in query for token in ("highest", "maximum", "largest")):
+                    operation, result = "MAX", float(values.max())
+                else:
+                    operation, result = "SUM", float(values.sum())
+                return _answer(question, f"{operation.title()} {metadata['original_name']} is {result:,.2f}.",
+                               [f"Count: {len(values):,}", f"Minimum: {values.min():,.2f}", f"Maximum: {values.max():,.2f}"],
+                               [column], f"{operation}({column})")
         values = _group_counts(frame, column, 8)
         if not values:
             return _answer(question, f"No non-empty values are available for {metadata['original_name']}.", [], [column], f"GROUP BY {column}")

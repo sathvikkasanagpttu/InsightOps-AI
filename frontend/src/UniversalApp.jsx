@@ -34,11 +34,14 @@ function Kpi({ item }) {
 
 function ChartPanel({ chart }) {
   const line = chart.kind === "line";
+  const formatter = value => chart.y_label === "revenue"
+    ? `₹${Number(value).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`
+    : Number(value).toLocaleString("en-IN", { maximumFractionDigits: 1 });
   return <section className="panel glass data-chart-panel">
     <span>{line ? "TIME SERIES" : "DIMENSION ANALYSIS"}</span><h2>{chart.title}</h2>
     <div className="chart"><ResponsiveContainer>
-      {line ? <LineChart data={chart.data}><CartesianGrid stroke="#ffffff10" vertical={false} /><XAxis dataKey={chart.x_key} tick={{ fill: "#8291a8", fontSize: 10 }} /><YAxis hide /><Tooltip contentStyle={{ background: "#0c1827", border: "1px solid #ffffff20" }} /><Line type="monotone" dataKey={chart.y_key} name={chart.y_key === "value" ? "Records" : chart.y_key} stroke="#77e5ce" strokeWidth={3} dot={false} /></LineChart>
-        : <BarChart data={chart.data}><CartesianGrid stroke="#ffffff10" vertical={false} /><XAxis dataKey={chart.x_key} tick={{ fill: "#8291a8", fontSize: 10 }} /><YAxis hide allowDecimals={false} /><Tooltip contentStyle={{ background: "#0c1827", border: "1px solid #ffffff20" }} /><Bar dataKey={chart.y_key} name="Records" fill="#77e5ce" radius={[5, 5, 0, 0]} /></BarChart>}
+      {line ? <LineChart data={chart.data}><CartesianGrid stroke="#ffffff10" vertical={false} /><XAxis dataKey={chart.x_key} tick={{ fill: "#8291a8", fontSize: 10 }} /><YAxis hide /><Tooltip formatter={formatter} contentStyle={{ background: "#0c1827", border: "1px solid #ffffff20" }} /><Line type="monotone" dataKey={chart.y_key} name={chart.y_label === "revenue" ? "Revenue" : "Records"} stroke="#77e5ce" strokeWidth={3} dot={false} /></LineChart>
+        : <BarChart data={chart.data}><CartesianGrid stroke="#ffffff10" vertical={false} /><XAxis dataKey={chart.x_key} tick={{ fill: "#8291a8", fontSize: 10 }} /><YAxis hide allowDecimals={false} /><Tooltip formatter={formatter} contentStyle={{ background: "#0c1827", border: "1px solid #ffffff20" }} /><Bar dataKey={chart.y_key} name={chart.y_label === "revenue" ? "Revenue" : "Records"} fill="#77e5ce" radius={[5, 5, 0, 0]} /></BarChart>}
     </ResponsiveContainer></div>
     <small className="source-note">Source: {chart.source_columns.join(", ")}</small>
   </section>;
@@ -191,6 +194,7 @@ function App() {
         <section className="stats dynamic-kpis">{kpis.map(item => <Kpi key={item.label} item={item} />)}</section>
         {profile.sensitive_columns.length > 0 && <div className="pii-notice"><AlertTriangle size={18} /><div><b>Sensitive columns detected</b><p>{profile.sensitive_columns.map(column => `${column.original_name || column.name} (${column.semantic_type})`).join(" · ")}. Values are masked and never sent to an external AI provider.</p></div></div>}
         <section className="chart-grid">{charts.map((chart, index) => <ChartPanel key={`${chart.title}-${index}`} chart={chart} />)}</section>
+        {profile.numeric_statistics.length > 0 && <section className="panel glass numeric-summary"><span>NUMERIC ANALYSIS</span><h2>Field statistics</h2><div className="table-scroll"><table><thead><tr><th>Field</th><th>Count</th><th>Mean</th><th>Median</th><th>Minimum</th><th>Maximum</th></tr></thead><tbody>{profile.numeric_statistics.map(item => <tr key={item.column}><td>{item.column}</td><td>{item.count.toLocaleString()}</td><td>{item.mean.toLocaleString()}</td><td>{item.median.toLocaleString()}</td><td>{item.min.toLocaleString()}</td><td>{item.max.toLocaleString()}</td></tr>)}</tbody></table></div></section>}
         <section className="grid two insight-grid"><div className="panel glass"><span>DATA INSIGHTS</span><h2>What stands out</h2>{insights.length ? insights.map((item, index) => <div className="insight-row" key={`${item.title}-${index}`}><b>{item.title}</b><p>{item.text}</p><small>Source: {item.source_columns.join(", ")} · {item.calculation}</small></div>) : <p className="muted">No high-confidence insights were detected.</p>}</div>
           <div className="panel glass"><span>DATA QUALITY</span><h2>{quality.overall_score}% quality score</h2>{Object.entries(quality.components).map(([name, value]) => <div className="quality-meter" key={name}><span>{name.replaceAll("_", " ")}</span><div className="meter"><i style={{ width: `${value}%` }} /></div><b>{value}%</b></div>)}<p className="muted">{quality.missing_values} missing cells · {quality.duplicate_rows} duplicate rows · {quality.invalid_values} invalid values</p></div>
         </section>

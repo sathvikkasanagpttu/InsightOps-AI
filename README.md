@@ -1,28 +1,24 @@
 # InsightOps AI
 
-> AI-Powered Business Intelligence & Decision Platform
+Universal Dataset Intelligence Platform
 
-InsightOps AI is a portfolio-grade analytics product that turns operational business data into an executive decision surface. It combines automated KPI analysis, anomaly detection, forecasting, regional/category intelligence and an AI analyst interface.
+InsightOps AI profiles CSV and Excel datasets, detects schema and semantics, cleans a separate working copy, reports data quality, and builds dataset-aware KPIs, charts, alerts, forecasts and deterministic analyst answers. The original upload is preserved unchanged.
 
-## Highlights
+## Features
 
-- Executive dashboard with responsive glassmorphism UI
-- Animated gradients, hover frames and micro-interactions
-- FastAPI analytics backend
-- Pandas-powered aggregation
-- Isolation Forest anomaly detection
-- Linear-regression revenue forecasting
-- Natural-language analyst endpoint
-- CSV profiling endpoint
-- PostgreSQL-ready architecture
-- Docker Compose setup
-- API tests
-- Sample business dataset
-- Mobile-responsive layout
+- CSV, XLSX and XLS uploads up to 50 MB
+- Dataset sessions with IDs and disk-backed raw/clean copies under `data/uploads/`
+- Semantic schema detection, type conversion, missing/duplicate/invalid/outlier checks and PII masking
+- Dataset-specific KPIs, dimension charts, insights and date-based forecasts
+- AI Analyst answers with evidence, source columns and calculation descriptions; no external AI provider
+- Data Studio sections for overview, schema, quality, missing values, duplicates, data types, sensitive fields and cleaning actions
+- Cleaned CSV export
+- Bundled sales and customer-operations sample datasets
 
-## Run locally
+## Run Locally
 
 ### Backend
+
 ```bash
 cd backend
 python -m venv .venv
@@ -32,7 +28,20 @@ cd ..
 uvicorn backend.app.main:app --reload --port 8000
 ```
 
+For backend tests and XLS test-file generation, install the development requirements:
+
+```bash
+cd backend
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+cd ..
+python -m pytest tests -q
+```
+
 ### Frontend
+
+In another terminal:
+
 ```bash
 cd frontend
 npm install
@@ -42,32 +51,37 @@ npm run dev
 Open `http://localhost:5173`.
 
 ### Docker
+
 ```bash
 docker compose up --build
 ```
 
-## API
+## Sample Data
 
+- `data/sample/sales.csv` exercises financial analytics.
+- `data/sample/customer_operations.csv` exercises universal CRM/lead analysis, PII detection, invalid values and quality alerts.
+
+Uploaded datasets are local session data, not source fixtures. Each upload returns a `dataset_id`; frontend requests use that ID to isolate profiles and analytics. `demo-sales` selects the bundled sales dataset. Uploaded raw files and cleaned copies are retained under `data/uploads/<dataset_id>/` and are excluded from Git.
+
+## Dataset API
+
+Upload a multipart field named `file`:
+
+- `POST /api/dataset/upload`
+- `GET /api/dataset/profile?dataset_id=...`
+- `GET /api/dataset/schema?dataset_id=...`
+- `GET /api/dataset/quality?dataset_id=...`
+- `GET /api/dataset/kpis?dataset_id=...`
+- `GET /api/dataset/insights?dataset_id=...`
+- `GET /api/dataset/charts?dataset_id=...`
+- `GET /api/dataset/forecast?dataset_id=...`
+- `GET /api/dataset/alerts?dataset_id=...`
+- `GET /api/dataset/export-clean?dataset_id=...`
+- `POST /api/analyst/ask` with `{"dataset_id":"...","question":"..."}`
 - `GET /api/health`
-- `GET /api/overview`
-- `GET /api/trends`
-- `GET /api/categories`
-- `GET /api/regions`
-- `GET /api/anomalies`
-- `GET /api/forecast`
-- `GET /api/ask?q=...`
-- `POST /api/profile`
 
-## Production roadmap
+Legacy demo routes (`/api/overview`, `/api/trends`, `/api/categories`, `/api/regions`, `/api/anomalies`, `/api/forecast`, and `/api/ask`) remain available and accept an optional `dataset_id` query parameter.
 
-1. Add PostgreSQL + Alembic migrations.
-2. Add authentication/RBAC and tenant isolation.
-3. Replace demo analyst logic with a governed LLM + SQL execution layer.
-4. Add background jobs with Celery/Redis.
-5. Add model registry, feature store and experiment tracking.
-6. Deploy frontend and API independently with CI/CD.
-7. Add audit logs and data lineage.
+## Data Handling
 
-## Portfolio positioning
-
-This project demonstrates the full analytics lifecycle: ingestion → quality profiling → KPI computation → diagnostic analysis → ML signals → forecasting → decision support → product delivery.
+The upload size limit is 50 MB. File extensions are restricted to CSV, XLSX and XLS; filenames are sanitized. Column headers and surrounding whitespace are normalized in the cleaned copy, and detected dates/numbers are converted. Missing values, duplicates and invalid values are reported rather than silently removed. PII values are masked in schema samples and excluded from charts and analyst answers. The cleaned export is available only through an explicit download action.

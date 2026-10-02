@@ -37,6 +37,15 @@ def _kpi_value(report: dict, label: str):
     return next((item["value"] for item in report["kpis"] if item["label"] == label), 0)
 
 
+def _clean_export_bytes(frame: pd.DataFrame) -> bytes:
+    export_frame = frame.copy()
+    for column in export_frame.select_dtypes(include=["object", "string"]).columns:
+        export_frame[column] = export_frame[column].map(
+            lambda value: f"'{value}" if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")) else value
+        )
+    return export_frame.to_csv(index=False).encode("utf-8-sig")
+
+
 @app.get("/api/health")
 def health():
     return {"status": "healthy", "service": "InsightOps AI", "version": "2.0.0"}
@@ -106,7 +115,7 @@ def analyst_ask(request: AnalystQuestion):
 @app.get("/api/dataset/export-clean")
 def export_clean_dataset(dataset_id: str = Query(default="demo-sales")):
     bundle = _bundle(dataset_id)
-    content = bundle["frame"].to_csv(index=False).encode("utf-8-sig")
+    content = _clean_export_bytes(bundle["frame"])
     filename = Path(bundle["filename"]).stem + "-cleaned.csv"
     return StreamingResponse(BytesIO(content), media_type="text/csv",
                              headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"})
