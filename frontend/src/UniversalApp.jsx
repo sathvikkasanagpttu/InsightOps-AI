@@ -1,17 +1,20 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  AlertTriangle, BarChart3, BrainCircuit, ChevronLeft, ChevronRight, Database,
-  Download, Filter, LogOut, Search, Send, ShieldCheck, Sparkles, Trash2, Upload, X
+  AlertTriangle, ArrowDown, ArrowUp, BarChart3, BrainCircuit, Check, CheckCircle2,
+  ChevronDown, ChevronLeft, ChevronRight, Copy, Database, Download, Eye, FileSpreadsheet,
+  FileText, Filter, HelpCircle, Info, Layers, LogOut, Maximize2, RefreshCw, Search,
+  Send, Share2, ShieldCheck, Sliders, Sparkles, Table, Trash2, TrendingDown, TrendingUp,
+  Upload, X, Zap
 } from "lucide-react";
 import {
-  Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart,
-  ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis
+  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart,
+  Pie, PieChart, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis
 } from "recharts";
 import { api } from "./lib/api";
 import "./universal.css";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
-const sections = ["Overview", "Schema", "Quality", "Missing Values", "Duplicates", "Data Types", "Sensitive Data", "Cleaning Actions", "Data Table"];
+
 const navItems = [
   { id: "overview", label: "Overview", icon: BarChart3 },
   { id: "data", label: "Data Studio", icon: Database },
@@ -19,49 +22,141 @@ const navItems = [
   { id: "explore", label: "Explore", icon: Search },
   { id: "forecast", label: "Forecasts", icon: TrendingUp },
   { id: "anomalies", label: "Anomalies", icon: AlertTriangle },
-  { id: "alerts", label: "Alerts", icon: AlertTriangle },
-  { id: "reports", label: "Reports", icon: Download },
-  { id: "dataset", label: "Dataset", icon: Database },
-  { id: "settings", label: "Settings", icon: Filter }
+  { id: "alerts", label: "Alerts", icon: Info },
+  { id: "reports", label: "Reports", icon: FileText },
+  { id: "dataset", label: "Dataset", icon: Layers },
+  { id: "settings", label: "Settings", icon: Sliders }
 ];
+
+const studioSections = [
+  "Overview", "Schema", "Quality", "Missing Values", "Duplicates",
+  "Data Types", "Sensitive Data", "Cleaning Actions", "Data Table"
+];
+
+const edaTabs = [
+  "Overview", "Distributions", "Correlations", "Relationships", "Categories", "Time Series", "Outliers"
+];
+
+const sampleDatasets = [
+  { id: "sales.csv", label: "Sales & Revenue", domain: "Sales" },
+  { id: "hr.csv", label: "HR & Workforce", domain: "HR" },
+  { id: "ecommerce.csv", label: "E-Commerce", domain: "E-commerce" },
+  { id: "finance.csv", label: "Finance & Cash Flow", domain: "Finance" },
+  { id: "healthcare.csv", label: "Healthcare & Patients", domain: "Healthcare" },
+];
+
+const analystQuestions = [
+  "Why did sales decline?",
+  "What is the largest category?",
+  "Which region performs best?",
+  "Show unusual values",
+  "What columns have missing data?",
+  "What is the average salary?",
+  "What are the strongest correlations?",
+  "Forecast next month",
+  "Summarize this dataset"
+];
+
 const uploadStages = ["File uploaded", "Schema detected", "Data cleaned", "Quality checked", "Analytics generated"];
 
 function formatValue(kpi, compact = false) {
   const value = Number(kpi.value ?? 0);
   const countFormat = compact ? { notation: "compact", maximumFractionDigits: 1 } : { maximumFractionDigits: 1 };
-  if (kpi.format === "currency") return `₹${value.toLocaleString("en-IN", compact ? { notation: "compact", maximumFractionDigits: 1 } : { maximumFractionDigits: 2 })}`;
-  if (kpi.format === "percent") return `${value.toLocaleString("en-IN", { maximumFractionDigits: 1 })}%`;
+  if (kpi.format === "currency") {
+    return `₹${value.toLocaleString("en-IN", compact ? { notation: "compact", maximumFractionDigits: 1 } : { maximumFractionDigits: 2 })}`;
+  }
+  if (kpi.format === "percent") {
+    return `${value.toLocaleString("en-IN", { maximumFractionDigits: 1 })}%`;
+  }
   return value.toLocaleString("en-IN", countFormat);
 }
 
-function Kpi({ item, compact }) {
-  return <div className="stat glass"><div className="icon"><Database size={18} /></div><div><span>{item.label}</span><strong>{formatValue(item, compact)}</strong><small>{item.source_columns?.length ? item.source_columns.join(", ") : "Dataset profile"}</small></div></div>;
+function KpiCard({ item, compact }) {
+  return (
+    <div className="stat glass" title={item.calculation ? `Formula: ${item.calculation}` : undefined}>
+      <div className="icon"><Database size={18} /></div>
+      <div>
+        <span>{item.label}</span>
+        <strong>{formatValue(item, compact)}</strong>
+        <small>{item.source_columns?.length ? item.source_columns.join(", ") : "Dataset profile"}</small>
+      </div>
+    </div>
+  );
 }
 
 function ChartPanel({ chart }) {
-  const line = chart.kind === "line";
+  const line = chart.kind === "line" || chart.kind === "area";
   const pie = chart.kind === "pie";
   const scatter = chart.kind === "scatter";
-  const palette = ["#e6c348", "#b98d28", "#f0cf55", "#8d7132", "#d8bb68", "#75602b"];
-  const formatter = value => chart.y_label === "revenue"
-    ? `₹${Number(value).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`
-    : Number(value).toLocaleString("en-IN", { maximumFractionDigits: 1 });
-  return <section className="panel glass data-chart-panel">
-    <span>{line ? "TIME SERIES" : "DIMENSION ANALYSIS"}</span><h2>{chart.title}</h2>
-    <div className="chart"><ResponsiveContainer>
-      {line ? <LineChart data={chart.data}><CartesianGrid stroke="#ffffff10" vertical={false} /><XAxis dataKey={chart.x_key} tick={{ fill: "#8291a8", fontSize: 10 }} /><YAxis hide /><Tooltip formatter={formatter} contentStyle={{ background: "#0c1827", border: "1px solid #ffffff20" }} /><Line type="monotone" dataKey={chart.y_key} name={chart.y_label === "revenue" ? "Revenue" : "Records"} stroke="#e6c348" strokeWidth={3} dot={false} /></LineChart>
-        : pie ? <PieChart><Tooltip formatter={formatter} /><Legend /><Pie data={chart.data} dataKey="value" nameKey="label" innerRadius={48} outerRadius={82} paddingAngle={2}>{chart.data.map((item, index) => <Cell key={item.label} fill={palette[index % palette.length]} />)}</Pie></PieChart>
-          : scatter ? <ScatterChart><CartesianGrid stroke="#ffffff10" /><XAxis type="number" dataKey="x" name={chart.x_label} tick={{ fill: "#a49d89", fontSize: 10 }} /><YAxis type="number" dataKey="y" name={chart.y_label} tick={{ fill: "#a49d89", fontSize: 10 }} /><Tooltip cursor={{ strokeDasharray: "3 3" }} /><Scatter name={`${chart.x_label} / ${chart.y_label}`} data={chart.data} fill="#e6c348" /></ScatterChart>
-            : <BarChart data={chart.data}><CartesianGrid stroke="#ffffff10" vertical={false} /><XAxis dataKey={chart.x_key} tick={{ fill: "#8291a8", fontSize: 10 }} /><YAxis hide allowDecimals={false} /><Tooltip formatter={formatter} contentStyle={{ background: "#0c1827", border: "1px solid #ffffff20" }} /><Bar dataKey={chart.y_key} name={chart.y_label === "revenue" ? "Revenue" : "Records"} fill="#e6c348" radius={[5, 5, 0, 0]} /></BarChart>}
-    </ResponsiveContainer></div>
-    <small className="source-note">Source: {chart.source_columns.join(", ")}</small>
-  </section>;
+  const histogram = chart.kind === "histogram";
+  const palette = ["#e6c348", "#b98d28", "#f0cf55", "#8d7132", "#d8bb68", "#75602b", "#5cdbb5", "#ffaa5a"];
+
+  const formatter = value => {
+    if (chart.y_label === "revenue") {
+      return `₹${Number(value).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+    }
+    return Number(value).toLocaleString("en-IN", { maximumFractionDigits: 1 });
+  };
+
+  return (
+    <section className="panel glass data-chart-panel">
+      <span>{line ? "TIME SERIES" : (scatter ? "RELATIONSHIP" : (histogram ? "DISTRIBUTION" : "DIMENSION ANALYSIS"))}</span>
+      <h2>{chart.title}</h2>
+      <div className="chart">
+        <ResponsiveContainer>
+          {line ? (
+            <AreaChart data={chart.data}>
+              <defs>
+                <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#e6c348" stopOpacity={0.35} />
+                  <stop offset="95%" stopColor="#e6c348" stopOpacity={0.0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="#ffffff10" vertical={false} />
+              <XAxis dataKey={chart.x_key} tick={{ fill: "#8291a8", fontSize: 10 }} />
+              <YAxis hide />
+              <Tooltip formatter={formatter} contentStyle={{ background: "#0c1827", border: "1px solid #ffffff20", borderRadius: 8 }} />
+              <Area type="monotone" dataKey={chart.y_key} name={chart.y_label === "revenue" ? "Revenue" : "Records"} stroke="#e6c348" strokeWidth={3} fillOpacity={1} fill="url(#areaGrad)" />
+            </AreaChart>
+          ) : pie ? (
+            <PieChart>
+              <Tooltip formatter={formatter} contentStyle={{ background: "#0c1827", border: "1px solid #ffffff20", borderRadius: 8 }} />
+              <Legend wrapperStyle={{ fontSize: 11, color: "#a49d89" }} />
+              <Pie data={chart.data} dataKey="value" nameKey="label" innerRadius={45} outerRadius={78} paddingAngle={2}>
+                {chart.data.map((item, index) => <Cell key={item.label || index} fill={palette[index % palette.length]} />)}
+              </Pie>
+            </PieChart>
+          ) : scatter ? (
+            <ScatterChart>
+              <CartesianGrid stroke="#ffffff10" />
+              <XAxis type="number" dataKey="x" name={chart.x_label || "X"} tick={{ fill: "#a49d89", fontSize: 10 }} />
+              <YAxis type="number" dataKey="y" name={chart.y_label || "Y"} tick={{ fill: "#a49d89", fontSize: 10 }} />
+              <Tooltip cursor={{ strokeDasharray: "3 3" }} contentStyle={{ background: "#0c1827", border: "1px solid #ffffff20", borderRadius: 8 }} />
+              <Scatter name={`${chart.x_label || "X"} / ${chart.y_label || "Y"}`} data={chart.data} fill="#e6c348" />
+            </ScatterChart>
+          ) : (
+            <BarChart data={chart.data}>
+              <CartesianGrid stroke="#ffffff10" vertical={false} />
+              <XAxis dataKey={chart.x_key} tick={{ fill: "#8291a8", fontSize: 10 }} />
+              <YAxis hide allowDecimals={false} />
+              <Tooltip formatter={formatter} contentStyle={{ background: "#0c1827", border: "1px solid #ffffff20", borderRadius: 8 }} />
+              <Bar dataKey={chart.y_key} name={chart.y_label === "revenue" ? "Revenue" : "Records"} fill="#e6c348" radius={[5, 5, 0, 0]} />
+            </BarChart>
+          )}
+        </ResponsiveContainer>
+      </div>
+      <small className="source-note">Source: {chart.source_columns?.join(", ") || "Calculated measure"}</small>
+    </section>
+  );
 }
 
-function App({ onSignOut }) {
+export default function UniversalApp({ onSignOut }) {
   const [activeView, setActiveView] = useState("overview");
   const [activeSection, setActiveSection] = useState("Overview");
+  const [edaTab, setEdaTab] = useState("Overview");
   const [datasetId, setDatasetId] = useState(() => localStorage.getItem("insightops.datasetId") || "demo-sales");
+
+  // Dataset analysis states
   const [profile, setProfile] = useState(null);
   const [schema, setSchema] = useState([]);
   const [quality, setQuality] = useState(null);
@@ -70,8 +165,15 @@ function App({ onSignOut }) {
   const [insights, setInsights] = useState([]);
   const [forecast, setForecast] = useState(null);
   const [alerts, setAlerts] = useState([]);
+  const [anomalies, setAnomalies] = useState([]);
+
+  // AI Analyst state
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState(null);
+  const [asking, setAsking] = useState(false);
+  const [askError, setAskError] = useState("");
+
+  // Loading, upload & preview states
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [previewing, setPreviewing] = useState(false);
@@ -80,8 +182,8 @@ function App({ onSignOut }) {
   const [selectedSheet, setSelectedSheet] = useState("");
   const [uploadReady, setUploadReady] = useState(false);
   const [error, setError] = useState("");
-  const [askError, setAskError] = useState("");
-  const [asking, setAsking] = useState(false);
+
+  // Filter & table explorer states
   const [search, setSearch] = useState("");
   const [semanticFilter, setSemanticFilter] = useState("all");
   const [sortBy, setSortBy] = useState("name");
@@ -92,15 +194,34 @@ function App({ onSignOut }) {
   const [tableData, setTableData] = useState(null);
   const [hiddenColumns, setHiddenColumns] = useState([]);
   const [compactNumbers, setCompactNumbers] = useState(() => localStorage.getItem("insightops.compactNumbers") === "true");
+
+  // EDA interactive selectors
+  const [selectedDistCol, setSelectedDistCol] = useState("");
+  const [selectedScatterX, setSelectedScatterX] = useState("");
+  const [selectedScatterY, setSelectedScatterY] = useState("");
+
+  // Modals & drawers
+  const [viewChangesOpen, setViewChangesOpen] = useState(false);
+  const [investigatingAnomaly, setInvestigatingAnomaly] = useState(null);
+  const [toasts, setToasts] = useState([]);
+
   const fileInput = useRef(null);
   const datasetQuery = `?dataset_id=${encodeURIComponent(datasetId)}`;
+
+  function addToast(message, type = "success") {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 3500);
+  }
 
   async function loadDataset(id) {
     setLoading(true);
     setError("");
     try {
       const query = `?dataset_id=${encodeURIComponent(id)}`;
-      const [nextProfile, nextSchema, nextQuality, nextKpis, nextCharts, nextInsights, nextForecast, nextAlerts] = await Promise.all([
+      const [nextProfile, nextSchema, nextQuality, nextKpis, nextCharts, nextInsights, nextForecast, nextAlerts, nextAnomalies] = await Promise.all([
         api(`/api/dataset/profile${query}`),
         api(`/api/dataset/schema${query}`),
         api(`/api/dataset/quality${query}`),
@@ -108,16 +229,26 @@ function App({ onSignOut }) {
         api(`/api/dataset/charts${query}`),
         api(`/api/dataset/insights${query}`),
         api(`/api/dataset/forecast${query}`),
-        api(`/api/dataset/alerts${query}`)
+        api(`/api/dataset/alerts${query}`),
+        api(`/api/datasets/${encodeURIComponent(id)}/anomalies`).catch(() => [])
       ]);
       setProfile(nextProfile);
-      setSchema(nextSchema.columns);
+      setSchema(nextSchema.columns || []);
       setQuality(nextQuality);
-      setKpis(nextKpis.kpis);
-      setCharts(nextCharts);
-      setInsights(nextInsights);
+      setKpis(nextKpis.kpis || []);
+      setCharts(nextCharts || []);
+      setInsights(nextInsights || []);
       setForecast(nextForecast);
-      setAlerts(nextAlerts);
+      setAlerts(nextAlerts || []);
+      setAnomalies(nextAnomalies || nextProfile.anomalies || []);
+
+      // Defaults for EDA
+      const numCols = (nextSchema.columns || []).filter(c => ["numeric", "currency", "percentage"].includes(c.semantic_type));
+      if (numCols.length > 0) {
+        setSelectedDistCol(numCols[0].name);
+        setSelectedScatterX(numCols[0].name);
+        setSelectedScatterY(numCols.length > 1 ? numCols[1].name : numCols[0].name);
+      }
     } catch (loadError) {
       if (id !== "demo-sales" && loadError.message.includes("not found")) {
         localStorage.removeItem("insightops.datasetId");
@@ -130,7 +261,9 @@ function App({ onSignOut }) {
     }
   }
 
-  useEffect(() => { loadDataset(datasetId); }, [datasetId]);
+  useEffect(() => {
+    loadDataset(datasetId);
+  }, [datasetId]);
 
   async function previewFile(file, sheet = "") {
     setPreviewing(true);
@@ -156,7 +289,7 @@ function App({ onSignOut }) {
     if (!file) return;
     const extension = file.name.split(".").pop()?.toLowerCase();
     if (!extension || !["csv", "xlsx", "xls"].includes(extension)) {
-      setError("Choose a CSV, XLSX or XLS dataset.");
+      setError("Please choose a valid CSV, XLSX, or XLS dataset.");
       return;
     }
     if (file.size > 50 * 1024 * 1024) {
@@ -179,16 +312,48 @@ function App({ onSignOut }) {
       if (selectedSheet) form.append("sheet_name", selectedSheet);
       const result = await api("/api/datasets/upload", { method: "POST", body: form });
       localStorage.setItem("insightops.datasetId", result.dataset_id);
+      setDatasetId(result.dataset_id);
       setActiveView("overview");
       setActiveSection("Overview");
-      setDatasetId(result.dataset_id);
       setPreview(null);
       setStagedFile(null);
       setUploadReady(true);
+      addToast(`Dataset "${result.filename}" ingested and analyzed successfully.`);
     } catch (uploadError) {
       setError(uploadError.message);
-      setActiveView("data");
-      setActiveSection("Overview");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function loadSampleDataset(filename) {
+    setUploading(true);
+    setError("");
+    try {
+      // Fetch sample dataset from public/static or backend route
+      const response = await fetch(`/data/sample/${filename}`);
+      let blob;
+      if (response.ok) {
+        blob = await response.blob();
+      } else {
+        // Fallback: upload trigger with sample name
+        throw new Error("Loading bundled sample...");
+      }
+      const form = new FormData();
+      form.append("file", blob, filename);
+      const result = await api("/api/datasets/upload", { method: "POST", body: form });
+      localStorage.setItem("insightops.datasetId", result.dataset_id);
+      setDatasetId(result.dataset_id);
+      setActiveView("overview");
+      addToast(`Switched to sample dataset: ${filename}`);
+    } catch (err) {
+      // If client cannot fetch direct static file, trigger direct demo switch
+      if (filename === "sales.csv") {
+        setDatasetId("demo-sales");
+        addToast("Switched to bundled Sales dataset.");
+      } else {
+        setError(`Could not load ${filename}: ${err.message}. Please use Upload dataset.`);
+      }
     } finally {
       setUploading(false);
     }
@@ -209,6 +374,7 @@ function App({ onSignOut }) {
       setActiveView("overview");
       setActiveSection("Overview");
       setUploadReady(false);
+      addToast("Dataset session removed. Returned to demo.");
     } catch (removeError) {
       setError(removeError.message);
     }
@@ -222,26 +388,31 @@ function App({ onSignOut }) {
       params.set("sort_order", tableSortOrder);
     }
     try {
-      setTableData(await api(`/api/dataset/rows?${params.toString()}`));
+      const data = await api(`/api/dataset/rows?${params.toString()}`);
+      setTableData(data);
     } catch (tableError) {
       setError(tableError.message);
     }
   }
 
   useEffect(() => {
-    if (activeView === "data" && activeSection === "Data Table") loadTableRows();
+    if (activeView === "data" && activeSection === "Data Table") {
+      loadTableRows();
+    }
   }, [activeView, activeSection, datasetId, tablePage, tableSearch, tableSort, tableSortOrder]);
 
-  async function askAnalyst(event) {
+  async function askAnalyst(event, customQuestion = "") {
     event?.preventDefault();
-    if (!question.trim() || asking) return;
+    const q = customQuestion || question.trim();
+    if (!q || asking) return;
     setAsking(true);
     setAskError("");
+    setQuestion(q);
     try {
       const result = await api("/api/analyst/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dataset_id: datasetId, question: question.trim() })
+        body: JSON.stringify({ dataset_id: datasetId, question: q })
       });
       setAnswer(result);
     } catch (requestError) {
@@ -255,105 +426,1236 @@ function App({ onSignOut }) {
     .filter(column => `${column.original_name} ${column.semantic_type} ${column.data_type}`.toLowerCase().includes(search.toLowerCase()))
     .filter(column => semanticFilter === "all" || (semanticFilter === "pii" ? ["email", "phone"].includes(column.semantic_type) : column.semantic_type === semanticFilter))
     .sort((left, right) => {
-      if (sortBy === "missing" || sortBy === "unique") return right[sortBy === "missing" ? "null_percentage" : "unique_count"] - left[sortBy === "missing" ? "null_percentage" : "unique_count"];
+      if (sortBy === "missing" || sortBy === "unique") {
+        return right[sortBy === "missing" ? "null_percentage" : "unique_count"] - left[sortBy === "missing" ? "null_percentage" : "unique_count"];
+      }
       return left[sortBy === "type" ? "semantic_type" : "original_name"].localeCompare(right[sortBy === "type" ? "semantic_type" : "original_name"]);
     });
 
   const heading = {
-    overview: ["LIVE DATA INTELLIGENCE", profile?.dataset_type || "Dataset overview", profile?.filename || "Analyze, understand and act on your data."],
-    data: ["DATA WORKSPACE", "Data Studio", profile?.filename || "Inspect your dataset schema and quality."],
-    analyst: ["DATASET-AWARE ANALYSIS", "AI Analyst", "Answers are calculated from this dataset."],
-    explore: ["EXPLORATORY DATA ANALYSIS", "Explore the data", "Distributions, relationships and numeric behavior."],
-    forecast: ["PREDICTIVE ANALYTICS", forecast?.metric === "revenue" ? "Revenue forecast" : "Record volume forecast", "Forecasts appear only when dated periods support them."],
-    anomalies: ["ANOMALY DETECTION", "Outlier explorer", "Potentially unusual numeric observations."],
-    alerts: ["QUALITY MONITORING", "Dataset alerts", "Issues and outliers detected in the active dataset."],
-    reports: ["ANALYSIS EXPORTS", "Dataset report", "Evidence-backed summary of this analysis."],
-    dataset: ["LIVE DATA WORKSPACE", "Current dataset", profile?.filename || "Manage the active dataset session."],
-    settings: ["WORKSPACE SETTINGS", "Preferences", "Local display and privacy controls."]
-  }[activeView];
+    overview: ["LIVE DATA INTELLIGENCE", profile?.dataset_type || "Dataset Overview", profile?.filename || "Dynamic inspection, cleaning and analytics."],
+    data: ["DATA INGESTION STUDIO", "Data Studio", profile?.filename || "Inspect schema, quality and cleaning pipeline."],
+    analyst: ["VERIFIED AI ANALYST", "Ask Your Dataset", "Calculated analytics with 100% traceable source evidence."],
+    explore: ["EXPLORATORY DATA ANALYSIS", "EDA Workspace", "Distributions, correlations, relationships and time trends."],
+    forecast: ["PREDICTIVE ENGINE", forecast?.metric === "revenue" ? "Revenue Forecast" : "Volume Forecast", "Confidence intervals and multi-period projection."],
+    anomalies: ["STATISTICAL ANOMALY ENGINE", "Anomaly Detection", "Outliers detected via IQR, Z-Score and Isolation Forest."],
+    alerts: ["QUALITY & COMPLIANCE", "Active Alerts", "Automated alerts for missingness, duplicates, and data health."],
+    reports: ["EXECUTIVE INTELLIGENCE", "Analysis Report", "Comprehensive business intelligence report ready for export."],
+    dataset: ["DATASET SESSION", "Active Dataset", profile?.filename || "Manage dataset session and exports."],
+    settings: ["SYSTEM SETTINGS", "Preferences", "Display preferences, number formatting and privacy controls."]
+  }[activeView] || ["INTELLIGENCE", "Dashboard", ""];
 
-  return <div className="app">
-    <aside className="sidebar">
-      <div className="brand"><div className="logo"><Sparkles /></div><div><b>InsightOps</b><span>UNIVERSAL DATA INTELLIGENCE</span></div></div>
-      <nav aria-label="Main navigation">{navItems.map(({ id, label, icon: Icon }) => <button key={id} type="button" className={activeView === id ? "active" : ""} onClick={() => setActiveView(id)} aria-current={activeView === id ? "page" : undefined}><Icon size={18} /><span>{label}</span></button>)}</nav>
-      <div className="side-card"><ShieldCheck size={20} /><b>Privacy first</b><p>PII is masked in analysis and no external AI service is used.</p></div>
-    </aside>
+  return (
+    <div className="app">
+      {/* Toast Notifications */}
+      <div className="toast-container" aria-live="polite">
+        {toasts.map(toast => (
+          <div key={toast.id} className={`toast ${toast.type}`}>
+            <CheckCircle2 size={16} />
+            <span>{toast.message}</span>
+          </div>
+        ))}
+      </div>
 
-    <main>
-      <header className="universal-header">
-        <div><p className="eyebrow">{heading[0]}</p><h1>{heading[1]} <em>{heading[2]}</em></h1>{profile && <p className="dataset-meta">{profile.filename} · {profile.rows.toLocaleString()} records · {profile.column_count} columns</p>}</div>
-        <div className="header-actions"><button className="upload" type="button" onClick={() => fileInput.current?.click()} disabled={uploading || previewing}><Upload size={17} />{uploading ? "Analyzing..." : "Upload dataset"}</button>{profile && <a className="icon-action" href={`${API_BASE}/api/dataset/export-clean${datasetQuery}`} title="Download cleaned dataset" aria-label="Download cleaned dataset"><Download size={17} /></a>}{profile && datasetId !== "demo-sales" && <button className="icon-action remove-dataset" type="button" onClick={removeDataset} aria-label="Remove active dataset" title="Remove active dataset"><Trash2 size={17} /></button>}<button className="icon-action sign-out-action" type="button" onClick={onSignOut} aria-label="Sign out" title="Sign out"><LogOut size={17} /></button></div>
-        <input ref={fileInput} className="file-input" type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={selectDatasetFile} aria-label="Choose CSV or Excel dataset" />
-      </header>
+      {/* Sidebar Navigation */}
+      <aside className="sidebar">
+        <div className="brand">
+          <div className="logo"><Sparkles size={20} /></div>
+          <div>
+            <b>InsightOps AI</b>
+            <span>UNIVERSAL DATA INTELLIGENCE</span>
+          </div>
+        </div>
 
-      {uploading && <div className="upload-progress" role="status"><span className="loading-dot" />Reading, cleaning and analyzing dataset...</div>}
-      {previewing && <div className="upload-progress" role="status"><span className="loading-dot" />Inspecting headers and sample rows...</div>}
-      {uploadReady && !uploading && <div className="upload-complete" role="status"><b>Dataset ready</b><div>{uploadStages.map(stage => <span key={stage}>✓ {stage}</span>)}</div></div>}
-      {error && <p className="notice error" role="alert">{error}</p>}
-      {loading && <p className="muted page-loading">Loading dataset analysis...</p>}
+        <nav aria-label="Main navigation">
+          {navItems.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              type="button"
+              className={activeView === id ? "active" : ""}
+              onClick={() => setActiveView(id)}
+              aria-current={activeView === id ? "page" : undefined}
+            >
+              <Icon size={18} />
+              <span>{label}</span>
+            </button>
+          ))}
+        </nav>
 
-      {!loading && profile && activeView === "overview" && <>
-        <section className="dataset-type glass"><div><span>DATASET TYPE</span><h2>{profile.dataset_type}</h2><p>Confidence {Math.round(profile.dataset_type_confidence * 100)}% · {profile.rows.toLocaleString()} records</p></div><div className="entity-list">{profile.detected_entities.map(entity => <span key={entity}>{entity}</span>)}</div></section>
-        <section className="stats dynamic-kpis">{kpis.map(item => <Kpi key={item.label} item={item} compact={compactNumbers} />)}</section>
-        {profile.sensitive_columns.length > 0 && <div className="pii-notice"><AlertTriangle size={18} /><div><b>Sensitive columns detected</b><p>{profile.sensitive_columns.map(column => `${column.original_name || column.name} (${column.semantic_type})`).join(" · ")}. Values are masked and never sent to an external AI provider.</p></div></div>}
-        <section className="chart-grid">{charts.map((chart, index) => <ChartPanel key={`${chart.title}-${index}`} chart={chart} />)}</section>
-        {profile.numeric_statistics.length > 0 && <section className="panel glass numeric-summary"><span>NUMERIC ANALYSIS</span><h2>Field statistics</h2><div className="table-scroll"><table><thead><tr><th>Field</th><th>Count</th><th>Mean</th><th>Median</th><th>Minimum</th><th>Maximum</th></tr></thead><tbody>{profile.numeric_statistics.map(item => <tr key={item.column}><td>{item.column}</td><td>{item.count.toLocaleString()}</td><td>{item.mean.toLocaleString()}</td><td>{item.median.toLocaleString()}</td><td>{item.min.toLocaleString()}</td><td>{item.max.toLocaleString()}</td></tr>)}</tbody></table></div></section>}
-        <section className="grid two insight-grid"><div className="panel glass"><span>DATA INSIGHTS</span><h2>What stands out</h2>{insights.length ? insights.map((item, index) => <div className="insight-row" key={`${item.title}-${index}`}><b>{item.title}</b><p>{item.text}</p><small>Source: {item.source_columns.join(", ")} · {item.calculation}</small></div>) : <p className="muted">No high-confidence insights were detected.</p>}</div>
-          <div className="panel glass"><span>DATA QUALITY</span><h2>{quality.overall_score}% quality score</h2>{Object.entries(quality.components).map(([name, value]) => <div className="quality-meter" key={name}><span>{name.replaceAll("_", " ")}</span><div className="meter"><i style={{ width: `${value}%` }} /></div><b>{value}%</b></div>)}<p className="muted">{quality.missing_values} missing cells · {quality.duplicate_rows} duplicate rows · {quality.invalid_values} invalid values</p></div>
-        </section>
-      </>}
+        <div className="side-card">
+          <ShieldCheck size={20} />
+          <b>Trustworthy Analytics</b>
+          <p>Every metric, insight, and anomaly has a traceable calculation formula.</p>
+        </div>
+      </aside>
 
-      {!loading && profile && activeView === "data" && <section className="panel glass page-panel data-studio">
-        <div className="panel-head"><div><span>DATASET PROFILE</span><h2>{profile.filename}</h2></div><div className="studio-actions"><a className="upload download-clean" href={`${API_BASE}/api/dataset/export-clean${datasetQuery}`}><Download size={16} />Export CSV</a><a className="upload download-clean" href={`${API_BASE}/api/dataset/export-clean.xlsx${datasetQuery}`}><Download size={16} />Export Excel</a><button className="text-button remove-dataset-link" type="button" onClick={removeDataset} disabled={datasetId === "demo-sales"}>Remove dataset</button></div></div>
-        <div className="dataset-summary"><div><span>Records</span><strong>{profile.rows.toLocaleString()}</strong></div><div><span>Columns</span><strong>{profile.column_count}</strong></div><div><span>Quality</span><strong>{quality.overall_score}%</strong></div><div><span>Duplicates</span><strong>{quality.duplicate_rows.toLocaleString()}</strong></div><div><span>Missing values</span><strong>{quality.missing_values.toLocaleString()}</strong></div></div>
-        <div className="studio-tabs" role="tablist" aria-label="Data Studio sections">{sections.map(section => <button key={section} type="button" role="tab" aria-selected={activeSection === section} className={activeSection === section ? "selected" : ""} onClick={() => setActiveSection(section)}>{section}</button>)}</div>
+      <main>
+        {/* Header */}
+        <header className="universal-header">
+          <div>
+            <p className="eyebrow">{heading[0]}</p>
+            <h1>{heading[1]} <em>{heading[2]}</em></h1>
+            {profile && (
+              <p className="dataset-meta">
+                {profile.filename} · {profile.rows.toLocaleString()} records · {profile.column_count} columns · Quality {profile.quality_score}%
+              </p>
+            )}
+          </div>
+          <div className="header-actions">
+            <button
+              className="upload"
+              type="button"
+              onClick={() => fileInput.current?.click()}
+              disabled={uploading || previewing}
+            >
+              <Upload size={17} />
+              {uploading ? "Analyzing..." : "Upload Dataset"}
+            </button>
+            {profile && (
+              <>
+                <a className="icon-action" href={`${API_BASE}/api/dataset/export-clean${datasetQuery}`} title="Download Cleaned CSV" aria-label="Download Cleaned CSV">
+                  <Download size={17} />
+                </a>
+                <a className="icon-action" href={`${API_BASE}/api/dataset/export-clean.xlsx${datasetQuery}`} title="Download Cleaned Excel" aria-label="Download Cleaned Excel">
+                  <FileSpreadsheet size={17} />
+                </a>
+              </>
+            )}
+            {profile && datasetId !== "demo-sales" && (
+              <button className="icon-action remove-dataset" type="button" onClick={removeDataset} aria-label="Remove active dataset" title="Remove active dataset">
+                <Trash2 size={17} />
+              </button>
+            )}
+            <button className="icon-action sign-out-action" type="button" onClick={onSignOut} aria-label="Sign out" title="Sign out">
+              <LogOut size={17} />
+            </button>
+          </div>
+          <input
+            ref={fileInput}
+            className="file-input"
+            type="file"
+            accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+            onChange={selectDatasetFile}
+            style={{ display: "none" }}
+            aria-label="Choose CSV or Excel dataset"
+          />
+        </header>
 
-        {activeSection === "Overview" && <div className="studio-overview"><div className="panel glass"><span>DATASET CLASSIFICATION</span><h2>{profile.dataset_type}</h2><p className="muted">Confidence {Math.round(profile.dataset_type_confidence * 100)}%</p><p>{profile.detected_entities.join(" · ") || "No semantic entities detected."}</p></div><div className="panel glass"><span>CLEANING ACTIONS</span><h2>Non-destructive preparation</h2><ul>{profile.cleaning_report.actions.map(action => <li key={action}>{action}</li>)}</ul><p className="muted">The original upload remains unchanged. Missing values and duplicate rows are reported, not silently removed.</p></div></div>}
+        {/* Quick Sample Dataset Bar */}
+        <div className="sample-datasets-bar">
+          <span>Sample Datasets:</span>
+          {sampleDatasets.map(ds => (
+            <button
+              key={ds.id}
+              type="button"
+              className={`sample-dataset-chip ${profile?.filename === ds.id ? "active" : ""}`}
+              onClick={() => loadSampleDataset(ds.id)}
+            >
+              {ds.label}
+            </button>
+          ))}
+        </div>
 
-        {(activeSection === "Schema" || activeSection === "Data Types") && <>
-          <div className="schema-controls"><label className="search-field"><Search size={16} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search columns" /></label><label className="control-select"><Filter size={15} /><select value={semanticFilter} onChange={event => setSemanticFilter(event.target.value)} aria-label="Filter columns"><option value="all">All types</option><option value="pii">Sensitive / PII</option>{[...new Set(schema.map(column => column.semantic_type))].sort().map(type => <option key={type} value={type}>{type}</option>)}</select></label><label className="control-select"><select value={sortBy} onChange={event => setSortBy(event.target.value)} aria-label="Sort columns"><option value="name">Sort: name</option><option value="type">Sort: semantic type</option><option value="missing">Sort: missing first</option><option value="unique">Sort: unique values</option></select></label></div>
-          <div className="table-scroll"><table><thead><tr><th>Column</th><th>Data type</th><th>Semantic type</th><th>Confidence</th><th>Nulls</th><th>Unique</th><th>Masked samples</th></tr></thead><tbody>{filteredSchema.map(column => <tr key={column.name}><td>{column.original_name}</td><td>{column.data_type}</td><td>{column.semantic_type}</td><td>{Math.round(column.confidence * 100)}%</td><td>{column.null_percentage}%</td><td>{column.unique_count.toLocaleString()}</td><td>{column.sample_values.join(", ") || "--"}</td></tr>)}</tbody></table>{filteredSchema.length === 0 && <p className="muted">No columns match these filters.</p>}</div>
-        </>}
+        {/* Status Banners */}
+        {uploading && (
+          <div className="upload-progress" role="status">
+            <span className="loading-dot" />
+            Ingesting, cleaning, and calculating dynamic models...
+          </div>
+        )}
+        {previewing && (
+          <div className="upload-progress" role="status">
+            <span className="loading-dot" />
+            Inspecting headers, delimiters and worksheet structures...
+          </div>
+        )}
+        {uploadReady && !uploading && (
+          <div className="upload-complete" role="status">
+            <b>Dataset session ready</b>
+            <div>{uploadStages.map(stage => <span key={stage}>✓ {stage}</span>)}</div>
+          </div>
+        )}
+        {error && <p className="notice error" role="alert">{error}</p>}
+        {loading && <p className="muted page-loading">Loading dataset analytics...</p>}
 
-        {activeSection === "Quality" && <div className="quality-section"><h2>Quality score {quality.overall_score}%</h2>{Object.entries(quality.components).map(([name, value]) => <div className="quality-meter" key={name}><span>{name.replaceAll("_", " ")}</span><div className="meter"><i style={{ width: `${value}%` }} /></div><b>{value}%</b></div>)}<p>Completeness, uniqueness, validity, consistency and type correctness are averaged equally.</p></div>}
-        {activeSection === "Missing Values" && <div className="table-scroll"><table><thead><tr><th>Column</th><th>Missing</th><th>Percent</th></tr></thead><tbody>{quality.missing_by_column.map(item => <tr key={item.column}><td>{item.column}</td><td>{item.count}</td><td>{item.percentage}%</td></tr>)}</tbody></table>{quality.missing_by_column.length === 0 && <p className="muted">No missing values detected.</p>}</div>}
-        {activeSection === "Duplicates" && <div className="quality-section"><h2>{quality.duplicate_rows.toLocaleString()} duplicate rows detected</h2><p className="muted">Exact duplicate rows are flagged. They remain in the cleaned export so records are never silently discarded.</p></div>}
-        {activeSection === "Sensitive Data" && <div className="sensitive-section">{profile.sensitive_columns.length ? <><div className="pii-notice"><AlertTriangle size={18} /><div><b>Potentially identifiable fields</b><p>These columns are masked in sample values and excluded from charts and AI summaries.</p></div></div>{profile.sensitive_columns.map(column => <div className="signal" key={column.name}><ShieldCheck size={18} /><div><b>{column.original_name}</b><p>{column.semantic_type} · {column.message}</p></div></div>)}</> : <p className="muted">No email or phone columns were detected.</p>}</div>}
-        {activeSection === "Cleaning Actions" && <div className="quality-section"><h2>Applied to the clean copy</h2><ul>{profile.cleaning_report.actions.map(action => <li key={action}>{action}</li>)}</ul><h3>Invalid values by column</h3>{quality.invalid_by_column.length ? quality.invalid_by_column.map(item => <p key={item.column}>{item.column}: {item.count}</p>) : <p className="muted">No invalid typed values detected.</p>}<p className="muted">Download the cleaned copy above. The uploaded source file is retained unchanged in this dataset session.</p></div>}
+        {/* 1. OVERVIEW VIEW */}
+        {!loading && profile && activeView === "overview" && (
+          <>
+            <section className="dataset-type glass">
+              <div>
+                <span>DATASET CLASSIFICATION</span>
+                <h2>{profile.dataset_type}</h2>
+                <p>Confidence {Math.round(profile.dataset_type_confidence * 100)}% · {profile.rows.toLocaleString()} records · Quality {profile.quality_score}%</p>
+              </div>
+              <div className="entity-list">
+                {profile.detected_entities.map(entity => <span key={entity}>{entity}</span>)}
+              </div>
+            </section>
 
-        {activeSection === "Data Table" && <div className="data-table-explorer"><div className="schema-controls"><label className="search-field"><Search size={16} /><input value={tableSearch} onChange={event => { setTableSearch(event.target.value); setTablePage(1); }} placeholder="Search dataset rows" /></label><label className="control-select"><select value={tableSort} onChange={event => setTableSort(event.target.value)} aria-label="Sort data rows"><option value="">Sort: original order</option>{schema.filter(column => !["email", "phone"].includes(column.semantic_type)).map(column => <option key={column.name} value={column.name}>{column.original_name}</option>)}</select></label><button className="text-button" type="button" onClick={() => setTableSortOrder(value => value === "asc" ? "desc" : "asc")}>{tableSortOrder === "asc" ? "Ascending" : "Descending"}</button></div><div className="column-visibility">{schema.map(column => <label key={column.name}><input type="checkbox" checked={!hiddenColumns.includes(column.name)} onChange={() => setHiddenColumns(current => current.includes(column.name) ? current.filter(name => name !== column.name) : [...current, column.name])} />{column.original_name}</label>)}</div><div className="table-scroll"><table><thead><tr>{tableData?.columns.filter(column => !hiddenColumns.includes(column.name)).map(column => <th key={column.name} aria-sort={tableSort === column.name ? tableSortOrder === "asc" ? "ascending" : "descending" : "none"}>{column.original_name}</th>)}</tr></thead><tbody>{tableData?.rows.map((row, index) => <tr key={`${tablePage}-${index}`}>{tableData.columns.filter(column => !hiddenColumns.includes(column.name)).map(column => <td className={row[column.name] == null ? "null-cell" : ""} key={column.name}>{row[column.name] ?? "Missing"}</td>)}</tr>)}</tbody></table></div><div className="table-pagination"><span>Rows {(tablePage - 1) * 25 + 1}–{Math.min(tablePage * 25, tableData?.total || 0)} of {(tableData?.total || 0).toLocaleString()}</span><div><button className="icon-action" type="button" disabled={tablePage <= 1} aria-label="Previous page" onClick={() => setTablePage(page => Math.max(1, page - 1))}><ChevronLeft size={17} /></button><span>Page {tablePage} of {Math.max(1, Math.ceil((tableData?.total || 0) / 25))}</span><button className="icon-action" type="button" disabled={tablePage * 25 >= (tableData?.total || 0)} aria-label="Next page" onClick={() => setTablePage(page => page + 1)}><ChevronRight size={17} /></button></div></div></div>}
-      </section>}
+            {/* Dynamic KPIs */}
+            <section className="stats dynamic-kpis">
+              {kpis.map(item => <KpiCard key={item.label} item={item} compact={compactNumbers} />)}
+            </section>
 
-      {!loading && profile && activeView === "analyst" && <section className="panel glass page-panel analyst-panel"><span>LOCAL, DATASET-AWARE ANALYSIS</span><h2>Ask your dataset</h2><p className="muted">Answers include supporting values, source columns and calculation details. Sensitive values are never returned.</p>
-        <div className="chat analyst-chat" aria-live="polite">{answer ? <><b>{answer.answer}</b><div className="answer-evidence">{answer.evidence.map((item, index) => <small key={`${item}-${index}`}>{item}</small>)}</div><small>Source columns: {answer.source_columns.join(", ") || "dataset profile"}</small><small>Calculation: {answer.calculation}</small></> : <p className="muted">Try “Which region has the most records?”, “Show me the status distribution”, or “Are there duplicate records?”</p>}</div>
-        {askError && <p className="notice error" role="alert">{askError}</p>}<form className="ask" onSubmit={askAnalyst}><input value={question} onChange={event => setQuestion(event.target.value)} placeholder="Ask a question about this dataset..." aria-label="Ask a question about this dataset" /><button type="submit" disabled={asking || !question.trim()} aria-label="Send question"><Send size={16} /></button></form>
-      </section>}
+            {/* PII Alert if present */}
+            {profile.sensitive_columns?.length > 0 && (
+              <div className="pii-notice">
+                <AlertTriangle size={18} />
+                <div>
+                  <b>Sensitive columns detected & protected</b>
+                  <p>{profile.sensitive_columns.map(c => `${c.original_name || c.name} (${c.semantic_type})`).join(" · ")}. Values are securely masked in previews and analysis.</p>
+                </div>
+              </div>
+            )}
 
-      {!loading && profile && activeView === "explore" && <>
-        <section className="chart-grid">{charts.map((chart, index) => <ChartPanel key={`explore-${chart.title}-${index}`} chart={chart} />)}</section>
-        {profile.correlations.length > 0 && <section className="panel glass page-panel"><span>NUMERIC RELATIONSHIPS</span><h2>Correlation analysis</h2><div className="table-scroll"><table><thead><tr><th>Measure A</th><th>Measure B</th><th>Pearson r</th><th>Observations</th></tr></thead><tbody>{profile.correlations.map(item => <tr key={`${item.x}-${item.y}`}><td>{item.x}</td><td>{item.y}</td><td>{item.pearson.toFixed(3)}</td><td>{item.sample_size.toLocaleString()}</td></tr>)}</tbody></table></div><p className="muted">Correlations describe association, not causation.</p></section>}
-        {profile.numeric_statistics.length > 0 && <section className="panel glass page-panel"><span>DISTRIBUTIONS</span><h2>Numeric field profile</h2><div className="table-scroll"><table><thead><tr><th>Field</th><th>Count</th><th>Mean</th><th>Median</th><th>Std dev</th><th>Min</th><th>Q1</th><th>Q3</th><th>Max</th></tr></thead><tbody>{profile.numeric_statistics.map(item => <tr key={item.column}><td>{item.column}</td><td>{item.count}</td><td>{item.mean.toLocaleString()}</td><td>{item.median.toLocaleString()}</td><td>{item.std.toLocaleString()}</td><td>{item.min.toLocaleString()}</td><td>{item.q1.toLocaleString()}</td><td>{item.q3.toLocaleString()}</td><td>{item.max.toLocaleString()}</td></tr>)}</tbody></table></div></section>}
-      </>}
+            {/* Dynamic Visualizations Grid */}
+            <section className="chart-grid">
+              {charts.map((chart, index) => <ChartPanel key={`${chart.title}-${index}`} chart={chart} />)}
+            </section>
 
-      {!loading && profile && activeView === "forecast" && <section className="panel glass page-panel"><span>DATASET-AWARE FORECAST</span><h2>{forecast.metric === "revenue" ? "Revenue forecast" : "Record volume forecast"}</h2>
-        {forecast.available ? <><div className="forecast-list">{forecast.values.map(item => <div className="forecast-row" key={item.period}><span>{item.period}</span><strong>{forecast.metric === "revenue" ? `₹${Number(item.value).toLocaleString("en-IN", { maximumFractionDigits: 2 })}` : `${item.value.toLocaleString()} records`}</strong></div>)}</div><h3>History and forecast</h3><div className="chart forecast-chart"><ResponsiveContainer><LineChart data={[...forecast.history.map(item => ({ ...item, kind: item.value })), ...forecast.values.map(item => ({ ...item, forecast: item.value }))]}><CartesianGrid stroke="#ffffff10" vertical={false} /><XAxis dataKey="period" tick={{ fill: "#8291a8", fontSize: 10 }} /><YAxis hide /><Tooltip /><Line type="monotone" dataKey="kind" name="Historical" stroke="#77e5ce" strokeWidth={3} dot={false} /><Line type="monotone" dataKey="forecast" name="Forecast" stroke="#ffbf69" strokeWidth={3} strokeDasharray="6 5" /></LineChart></ResponsiveContainer></div><small className="source-note">Source columns: {forecast.source_columns.join(", ")}</small></> : <div className="forecast-unavailable"><h3>Forecast unavailable</h3><p>{forecast.reason}</p><p>Available analytics: {charts.map(chart => chart.title).join(" · ") || "Distribution · Segmentation · Data quality"}</p></div>}
-      </section>}
+            {/* Insights & Quality */}
+            <section className="grid two insight-grid">
+              <div className="panel glass">
+                <span>AI-DRIVEN VERIFIED INSIGHTS</span>
+                <h2>Key Findings & Drivers</h2>
+                {insights.length ? (
+                  insights.map((item, index) => (
+                    <div className="insight-row" key={`${item.title}-${index}`}>
+                      <b>{item.title}</b>
+                      <p>{item.text}</p>
+                      <small>Source: {item.source_columns?.join(", ") || "Dataset"} · Formula: {item.calculation}</small>
+                    </div>
+                  ))
+                ) : (
+                  <p className="muted">No high-confidence insights were detected.</p>
+                )}
+              </div>
 
-      {!loading && profile && activeView === "alerts" && <section className="panel glass page-panel alert-list"><span>RULES AND STATISTICAL CHECKS</span><h2>Dataset alerts</h2>{alerts.length ? alerts.map((item, index) => <div className="signal" key={`${item.title}-${index}`}><AlertTriangle size={18} /><div><b>{item.title}</b><p>{item.detail}</p><small>Source: {item.source_columns.join(", ") || "dataset-wide check"}</small></div><span className={`severity ${item.severity}`}>{item.severity}</span></div>) : <p className="muted">No quality or outlier alerts for this dataset.</p>}</section>}
+              <div className="panel glass">
+                <span>DATA QUALITY HEALTH</span>
+                <h2>{quality.overall_score}% Quality Score</h2>
+                {Object.entries(quality.components).map(([name, value]) => (
+                  <div className="quality-meter" key={name}>
+                    <span>{name.replaceAll("_", " ")}</span>
+                    <div className="meter"><i style={{ width: `${value}%` }} /></div>
+                    <b>{value}%</b>
+                  </div>
+                ))}
+                <p className="muted" style={{ marginTop: 14 }}>
+                  {quality.missing_values.toLocaleString()} missing cells · {quality.duplicate_rows.toLocaleString()} duplicate rows · {quality.invalid_values.toLocaleString()} invalid values
+                </p>
+                <button
+                  type="button"
+                  className="btn-view-changes"
+                  style={{ marginTop: 10 }}
+                  onClick={() => setViewChangesOpen(true)}
+                >
+                  <Eye size={14} /> View Cleaning Changes
+                </button>
+              </div>
+            </section>
+          </>
+        )}
 
-      {!loading && profile && activeView === "anomalies" && <section className="panel glass page-panel alert-list"><span>NUMERIC OUTLIER DETECTION · IQR</span><h2>Potential anomalies</h2>{alerts.filter(item => item.title.toLowerCase().includes("outlier") || item.title.toLowerCase().includes("unusual")).length ? alerts.filter(item => item.title.toLowerCase().includes("outlier") || item.title.toLowerCase().includes("unusual")).map((item, index) => <div className="signal" key={`${item.title}-${index}`}><AlertTriangle size={18} /><div><b>{item.title}</b><p>{item.detail}</p><small>Source: {item.source_columns.join(", ")}</small></div><span className={`severity ${item.severity}`}>{item.severity}</span></div>) : <p className="muted">No numeric outliers were detected. Fields with no variance or fewer than four usable values are skipped.</p>}</section>}
+        {/* 2. DATA STUDIO VIEW */}
+        {!loading && profile && activeView === "data" && (
+          <section className="panel glass page-panel data-studio">
+            <div className="panel-head">
+              <div>
+                <span>DATA INGESTION STUDIO</span>
+                <h2>{profile.filename}</h2>
+              </div>
+              <div className="studio-actions">
+                <button type="button" className="btn-view-changes" onClick={() => setViewChangesOpen(true)}>
+                  <Eye size={15} /> View Changes Diff
+                </button>
+                <a className="upload download-clean" href={`${API_BASE}/api/dataset/export-clean${datasetQuery}`}>
+                  <Download size={15} /> Clean CSV
+                </a>
+                <a className="upload download-clean" href={`${API_BASE}/api/dataset/export-clean.xlsx${datasetQuery}`}>
+                  <FileSpreadsheet size={15} /> Clean Excel
+                </a>
+                <button className="text-button remove-dataset-link" type="button" onClick={removeDataset} disabled={datasetId === "demo-sales"}>
+                  Remove dataset
+                </button>
+              </div>
+            </div>
 
-      {!loading && profile && activeView === "reports" && <section className="panel glass page-panel report-view"><div className="panel-head"><div><span>GENERATED FROM ACTIVE SESSION</span><h2>{profile.filename} analysis report</h2></div><div className="studio-actions"><a className="upload download-clean" href={`${API_BASE}/api/dataset/report?dataset_id=${encodeURIComponent(datasetId)}`} download={`${profile.filename}.analysis.json`}><Download size={16} />Export JSON</a><button className="upload" type="button" onClick={() => window.print()}>Print report</button></div></div><div className="dataset-summary"><div><span>Records</span><strong>{profile.rows.toLocaleString()}</strong></div><div><span>Quality</span><strong>{profile.quality_score}%</strong></div><div><span>Data type</span><strong>{profile.dataset_type}</strong></div><div><span>Alerts</span><strong>{alerts.length}</strong></div></div><h3>Key metrics</h3><div className="report-kpis">{kpis.map(item => <p key={item.label}><b>{item.label}:</b> {formatValue(item, compactNumbers)} <small>{item.source_columns.join(", ")}</small></p>)}</div><h3>Evidence-backed insights</h3>{insights.map((item, index) => <div className="insight-row" key={index}><b>{item.title}</b><p>{item.text}</p><small>Source: {item.source_columns.join(", ")} · {item.calculation}</small></div>)}<h3>Quality issues and alerts</h3>{alerts.length ? alerts.map((item, index) => <p key={index}><b>{item.title}:</b> {item.detail}</p>) : <p className="muted">No alerts for this dataset.</p>}</section>}
+            {/* Summary Banner */}
+            <div className="dataset-summary">
+              <div><span>Records</span><strong>{profile.rows.toLocaleString()}</strong></div>
+              <div><span>Columns</span><strong>{profile.column_count}</strong></div>
+              <div><span>Quality</span><strong>{quality.overall_score}%</strong></div>
+              <div><span>Duplicates</span><strong>{quality.duplicate_rows.toLocaleString()}</strong></div>
+              <div><span>Missing Cells</span><strong>{quality.missing_values.toLocaleString()}</strong></div>
+            </div>
 
-      {!loading && profile && activeView === "dataset" && <section className="panel glass page-panel"><div className="panel-head"><div><span>ACTIVE DATASET SESSION</span><h2>{profile.filename}</h2></div><div className="studio-actions"><button className="upload" type="button" onClick={() => fileInput.current?.click()}><Upload size={16} />Replace dataset</button>{datasetId !== "demo-sales" && <button className="text-button remove-dataset-link" type="button" onClick={removeDataset}>Remove dataset</button>}</div></div><div className="dataset-summary"><div><span>Status</span><strong>Analyzed</strong></div><div><span>Rows</span><strong>{profile.rows.toLocaleString()}</strong></div><div><span>Columns</span><strong>{profile.column_count}</strong></div><div><span>File size</span><strong>{profile.file_size ? `${(profile.file_size / 1048576).toFixed(2)} MB` : "Bundled"}</strong></div><div><span>Uploaded</span><strong>{profile.created_at ? new Date(profile.created_at).toLocaleString() : "Bundled demo"}</strong></div></div><p className="muted">Raw source is preserved in the local dataset session. Cleaned exports and reports are available from Data Studio and Reports.</p></section>}
+            {/* Studio Navigation Tabs */}
+            <div className="studio-tabs" role="tablist" aria-label="Data Studio sections">
+              {studioSections.map(section => (
+                <button
+                  key={section}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeSection === section}
+                  className={activeSection === section ? "selected" : ""}
+                  onClick={() => setActiveSection(section)}
+                >
+                  {section}
+                </button>
+              ))}
+            </div>
 
-      {!loading && profile && activeView === "settings" && <section className="panel glass page-panel settings-view"><span>LOCAL WORKSPACE</span><h2>Preferences and privacy</h2><label className="setting-row"><span><b>Compact KPI numbers</b><small>Show large values using K/M notation on the Overview and Reports pages.</small></span><input type="checkbox" checked={compactNumbers} onChange={event => { setCompactNumbers(event.target.checked); localStorage.setItem("insightops.compactNumbers", String(event.target.checked)); }} /></label><div className="setting-row"><span><b>PII protection</b><small>Email and phone values stay masked in previews, row browsing, charts and Analyst answers.</small></span><ShieldCheck size={18} /></div><div className="setting-row"><span><b>Dataset storage</b><small>Sessions are stored locally under data/uploads and remain until removed.</small></span><Database size={18} /></div></section>}
+            {/* Studio: Overview Section */}
+            {activeSection === "Overview" && (
+              <div className="studio-overview">
+                <div className="panel glass">
+                  <span>CLASSIFICATION & SCHEMA</span>
+                  <h2>{profile.dataset_type}</h2>
+                  <p className="muted">Confidence {Math.round(profile.dataset_type_confidence * 100)}%</p>
+                  <p>{profile.detected_entities.join(" · ") || "Universal data profile."}</p>
+                </div>
+                <div className="panel glass">
+                  <span>DATA QUALITY & CLEANING</span>
+                  <h2>Automated Cleaning Actions</h2>
+                  <ul>
+                    {profile.cleaning_report.actions.map(action => <li key={action}>{action}</li>)}
+                  </ul>
+                  <button type="button" className="btn-view-changes" onClick={() => setViewChangesOpen(true)} style={{ marginTop: 12 }}>
+                    <Eye size={14} /> Inspect Before/After Diff
+                  </button>
+                </div>
+              </div>
+            )}
 
-      {preview && <div className="upload-modal-backdrop" role="presentation" onClick={event => { if (event.target === event.currentTarget) cancelPreview(); }}><section className="upload-modal panel glass" role="dialog" aria-modal="true" aria-labelledby="preview-title"><div className="panel-head"><div><span>DATA INGESTION STUDIO</span><h2 id="preview-title">Preview before analysis</h2></div><button className="icon-action" type="button" onClick={cancelPreview} aria-label="Cancel upload"><X size={17} /></button></div><div className="file-dropzone" onDragOver={event => { event.preventDefault(); event.currentTarget.classList.add("drag-over"); }} onDragLeave={event => event.currentTarget.classList.remove("drag-over")} onDrop={async event => { event.preventDefault(); event.currentTarget.classList.remove("drag-over"); const file = event.dataTransfer.files?.[0]; if (file) { setStagedFile(file); setPreview(null); await previewFile(file); } }}><span>Drop a replacement dataset here, or choose a file.</span><button type="button" onClick={() => fileInput.current?.click()}>Browse files</button></div><div className="preview-file-meta"><b>{preview.filename}</b><span>{(preview.file_size / (1024 * 1024)).toFixed(2)} MB</span><span>{preview.columns.length} detected columns</span></div>{preview.sheet_names.length > 0 && <label className="sheet-picker">Worksheet<select value={selectedSheet} onChange={async event => { const value = event.target.value; setSelectedSheet(value); await previewFile(stagedFile, value); }} aria-label="Select Excel worksheet">{preview.sheet_names.map(sheet => <option key={sheet} value={sheet}>{sheet}</option>)}</select></label>}<div className="preview-schema">{preview.columns.map(column => <span key={column.column_name}>{column.column_name} <i>{column.semantic_type}</i></span>)}</div><div className="table-scroll preview-table"><table><thead><tr>{preview.columns.map(column => <th key={column.column_name}>{column.column_name}</th>)}</tr></thead><tbody>{preview.preview_rows.map((row, index) => <tr key={index}>{preview.columns.map(column => <td key={column.column_name}>{row[column.column_name] ?? "Missing"}</td>)}</tr>)}</tbody></table></div><p className="muted preview-note">Contact fields are masked in the preview. Analysis preserves the original upload and reports suggested cleaning changes before any export.</p><div className="preview-actions"><button className="text-button" type="button" onClick={cancelPreview} disabled={uploading}>Cancel</button><button className="upload" type="button" onClick={analyzeStagedDataset} disabled={uploading || previewing}><Database size={16} />{uploading ? "Analyzing..." : "Analyze Dataset"}</button></div></section></div>}
+            {/* Studio: Schema & Types */}
+            {(activeSection === "Schema" || activeSection === "Data Types") && (
+              <>
+                <div className="schema-controls">
+                  <label className="search-field">
+                    <Search size={16} />
+                    <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search columns..." />
+                  </label>
+                  <label className="control-select">
+                    <Filter size={15} />
+                    <select value={semanticFilter} onChange={e => setSemanticFilter(e.target.value)} aria-label="Filter columns">
+                      <option value="all">All Types</option>
+                      <option value="pii">PII (Sensitive)</option>
+                      {[...new Set(schema.map(c => c.semantic_type))].sort().map(t => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="control-select">
+                    <select value={sortBy} onChange={e => setSortBy(e.target.value)} aria-label="Sort columns">
+                      <option value="name">Sort: Name</option>
+                      <option value="type">Sort: Semantic Type</option>
+                      <option value="missing">Sort: Missing First</option>
+                      <option value="unique">Sort: Unique Values</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="table-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Column</th>
+                        <th>Data Type</th>
+                        <th>Semantic Type</th>
+                        <th>Confidence</th>
+                        <th>Null %</th>
+                        <th>Unique</th>
+                        <th>Sample Values</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredSchema.map(col => (
+                        <tr key={col.name}>
+                          <td><b>{col.original_name}</b></td>
+                          <td><code>{col.data_type}</code></td>
+                          <td><span className="badge">{col.semantic_type}</span></td>
+                          <td>{Math.round(col.confidence * 100)}%</td>
+                          <td>{col.null_percentage}%</td>
+                          <td>{col.unique_count.toLocaleString()}</td>
+                          <td>{col.sample_values?.join(", ") || "--"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
 
-      <footer>InsightOps AI · {profile?.filename || "Dataset loading"} · Session {datasetId === "demo-sales" ? "demo" : datasetId.slice(0, 8)}</footer>
-    </main>
-  </div>;
+            {/* Studio: Quality */}
+            {activeSection === "Quality" && (
+              <div className="quality-section">
+                <h2>Comprehensive Quality Health {quality.overall_score}%</h2>
+                {Object.entries(quality.components).map(([name, value]) => (
+                  <div className="quality-meter" key={name}>
+                    <span>{name.replaceAll("_", " ")}</span>
+                    <div className="meter"><i style={{ width: `${value}%` }} /></div>
+                    <b>{value}%</b>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Studio: Missing Values */}
+            {activeSection === "Missing Values" && (
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr><th>Column</th><th>Missing Count</th><th>Percentage</th></tr>
+                  </thead>
+                  <tbody>
+                    {quality.missing_by_column.map(item => (
+                      <tr key={item.column}>
+                        <td>{item.column}</td>
+                        <td>{item.count.toLocaleString()}</td>
+                        <td>{item.percentage}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {quality.missing_by_column.length === 0 && <p className="muted">No missing values detected in dataset.</p>}
+              </div>
+            )}
+
+            {/* Studio: Duplicates */}
+            {activeSection === "Duplicates" && (
+              <div className="quality-section">
+                <h2>{quality.duplicate_rows.toLocaleString()} Duplicate Rows Detected</h2>
+                <p className="muted">Exact duplicate rows are preserved in the raw file and flagged in analysis. Use cleaned export for deduplicated workflows.</p>
+              </div>
+            )}
+
+            {/* Studio: Sensitive Data */}
+            {activeSection === "Sensitive Data" && (
+              <div className="sensitive-section">
+                {profile.sensitive_columns?.length ? (
+                  profile.sensitive_columns.map(col => (
+                    <div className="signal" key={col.name}>
+                      <ShieldCheck size={18} />
+                      <div>
+                        <b>{col.original_name}</b>
+                        <p>{col.semantic_type} · {col.message}</p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="muted">No sensitive PII (emails or phone numbers) detected.</p>
+                )}
+              </div>
+            )}
+
+            {/* Studio: Cleaning Actions */}
+            {activeSection === "Cleaning Actions" && (
+              <div className="quality-section">
+                <h2>Actions Applied to Clean Dataset</h2>
+                <ul>
+                  {profile.cleaning_report.actions.map(action => <li key={action}>{action}</li>)}
+                </ul>
+                <button type="button" className="btn-view-changes" onClick={() => setViewChangesOpen(true)} style={{ marginTop: 14 }}>
+                  <Eye size={15} /> View Full Before/After Changes
+                </button>
+              </div>
+            )}
+
+            {/* Studio: Data Table Explorer */}
+            {activeSection === "Data Table" && (
+              <div className="data-table-explorer">
+                <div className="schema-controls">
+                  <label className="search-field">
+                    <Search size={16} />
+                    <input
+                      value={tableSearch}
+                      onChange={e => { setTableSearch(e.target.value); setTablePage(1); }}
+                      placeholder="Search table rows..."
+                    />
+                  </label>
+                  <label className="control-select">
+                    <select value={tableSort} onChange={e => setTableSort(e.target.value)} aria-label="Sort column">
+                      <option value="">Sort: Original Order</option>
+                      {schema.filter(c => !["email", "phone"].includes(c.semantic_type)).map(c => (
+                        <option key={c.name} value={c.name}>{c.original_name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <button className="text-button" type="button" onClick={() => setTableSortOrder(v => v === "asc" ? "desc" : "asc")}>
+                    {tableSortOrder === "asc" ? "Ascending" : "Descending"}
+                  </button>
+                </div>
+
+                <div className="column-visibility">
+                  {schema.map(col => (
+                    <label key={col.name}>
+                      <input
+                        type="checkbox"
+                        checked={!hiddenColumns.includes(col.name)}
+                        onChange={() => setHiddenColumns(curr => curr.includes(col.name) ? curr.filter(n => n !== col.name) : [...curr, col.name])}
+                      />
+                      {col.original_name}
+                    </label>
+                  ))}
+                </div>
+
+                <div className="table-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        {tableData?.columns.filter(c => !hiddenColumns.includes(c.name)).map(col => (
+                          <th key={col.name}>{col.original_name}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tableData?.rows.map((row, index) => (
+                        <tr key={`${tablePage}-${index}`}>
+                          {tableData.columns.filter(c => !hiddenColumns.includes(c.name)).map(col => (
+                            <td className={row[col.name] == null ? "null-cell" : ""} key={col.name}>
+                              {row[col.name] ?? "Missing"}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="table-pagination">
+                  <span>Rows {(tablePage - 1) * 25 + 1}–{Math.min(tablePage * 25, tableData?.total || 0)} of {(tableData?.total || 0).toLocaleString()}</span>
+                  <div>
+                    <button className="icon-action" type="button" disabled={tablePage <= 1} onClick={() => setTablePage(p => Math.max(1, p - 1))}>
+                      <ChevronLeft size={16} />
+                    </button>
+                    <span>Page {tablePage} of {Math.max(1, Math.ceil((tableData?.total || 0) / 25))}</span>
+                    <button className="icon-action" type="button" disabled={tablePage * 25 >= (tableData?.total || 0)} onClick={() => setTablePage(p => p + 1)}>
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* 3. AI ANALYST VIEW */}
+        {!loading && profile && activeView === "analyst" && (
+          <section className="panel glass page-panel analyst-panel">
+            <div className="panel-head">
+              <div>
+                <span>LOCAL & TRUSTWORTHY INTELLIGENCE</span>
+                <h2>Ask Your Dataset</h2>
+                <p className="muted">Ask natural language business questions. All calculations are executed deterministically on your dataset.</p>
+              </div>
+            </div>
+
+            {/* Quick question chips */}
+            <div className="query-chips">
+              {analystQuestions.map(qText => (
+                <button
+                  key={qText}
+                  type="button"
+                  className="query-chip"
+                  onClick={e => askAnalyst(e, qText)}
+                  disabled={asking}
+                >
+                  {qText}
+                </button>
+              ))}
+            </div>
+
+            {/* Analyst Response Panel */}
+            <div className="analyst-chat" aria-live="polite">
+              {answer ? (
+                <>
+                  <b>{answer.answer}</b>
+                  <div className="answer-evidence">
+                    {answer.evidence.map((ev, i) => (
+                      <small key={i}><Check size={14} style={{ color: "#e6c348" }} /> {ev}</small>
+                    ))}
+                  </div>
+                  {answer.top_contributor && (
+                    <div style={{ margin: "6px 0", fontSize: 13, color: "#f0cf55" }}>
+                      ★ Primary Driver: {JSON.stringify(answer.top_contributor).replaceAll('"', "").replaceAll("{", "").replaceAll("}", "")}
+                    </div>
+                  )}
+                  <div className="analyst-meta">
+                    <span>Source: {answer.source_columns?.join(", ") || "Dataset Profile"}</span>
+                    <span>Formula: <code>{answer.calculation}</code></span>
+                    {answer.query_intent && <span>Intent: <em>{answer.query_intent}</em></span>}
+                  </div>
+                </>
+              ) : (
+                <p className="muted">Ask a question above or select one of the suggested query chips to inspect your data.</p>
+              )}
+            </div>
+
+            {askError && <p className="notice error">{askError}</p>}
+
+            {/* Question Input Form */}
+            <form className="ask" onSubmit={askAnalyst}>
+              <input
+                value={question}
+                onChange={e => setQuestion(e.target.value)}
+                placeholder="Ask about revenue trends, top categories, anomalies, salary averages..."
+                disabled={asking}
+              />
+              <button type="submit" disabled={asking || !question.trim()}>
+                <Send size={16} />
+              </button>
+            </form>
+          </section>
+        )}
+
+        {/* 4. EXPLORATORY DATA ANALYSIS (EDA) */}
+        {!loading && profile && activeView === "explore" && (
+          <section className="panel glass page-panel">
+            <div className="panel-head">
+              <div>
+                <span>EXPLORATORY DATA ANALYSIS</span>
+                <h2>Data Explorations & Distributions</h2>
+              </div>
+            </div>
+
+            <div className="eda-subtabs">
+              {edaTabs.map(tab => (
+                <button
+                  key={tab}
+                  type="button"
+                  className={`eda-subtab-btn ${edaTab === tab ? "active" : ""}`}
+                  onClick={() => setEdaTab(tab)}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+
+            {/* EDA: Overview */}
+            {edaTab === "Overview" && (
+              <>
+                <section className="chart-grid">
+                  {charts.slice(0, 4).map((chart, i) => <ChartPanel key={i} chart={chart} />)}
+                </section>
+                {profile.numeric_statistics.length > 0 && (
+                  <div className="table-scroll">
+                    <table>
+                      <thead>
+                        <tr><th>Measure</th><th>Count</th><th>Mean</th><th>Median</th><th>Std Dev</th><th>Min</th><th>Q1</th><th>Q3</th><th>Max</th><th>Outliers</th></tr>
+                      </thead>
+                      <tbody>
+                        {profile.numeric_statistics.map(st => (
+                          <tr key={st.column}>
+                            <td><b>{st.column}</b></td>
+                            <td>{st.count.toLocaleString()}</td>
+                            <td>{st.mean.toLocaleString()}</td>
+                            <td>{st.median.toLocaleString()}</td>
+                            <td>{st.std.toLocaleString()}</td>
+                            <td>{st.min.toLocaleString()}</td>
+                            <td>{st.q1.toLocaleString()}</td>
+                            <td>{st.q3.toLocaleString()}</td>
+                            <td>{st.max.toLocaleString()}</td>
+                            <td><span className={st.outlier_count > 0 ? "severity-badge medium" : ""}>{st.outlier_count}</span></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* EDA: Distributions */}
+            {edaTab === "Distributions" && (
+              <div>
+                <div className="schema-controls">
+                  <label className="control-select">
+                    <span>Select Measure:</span>
+                    <select value={selectedDistCol} onChange={e => setSelectedDistCol(e.target.value)}>
+                      {schema.filter(c => ["numeric", "currency", "percentage"].includes(c.semantic_type)).map(c => (
+                        <option key={c.name} value={c.name}>{c.original_name}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                {charts.filter(c => c.kind === "histogram" && (!selectedDistCol || c.title.toLowerCase().includes(selectedDistCol.toLowerCase()))).map((hChart, idx) => (
+                  <ChartPanel key={idx} chart={hChart} />
+                ))}
+              </div>
+            )}
+
+            {/* EDA: Correlations Matrix */}
+            {edaTab === "Correlations" && (
+              <div>
+                {profile.correlations?.length > 0 ? (
+                  <div className="table-scroll">
+                    <table className="correlation-matrix">
+                      <thead>
+                        <tr><th>Measure X</th><th>Measure Y</th><th>Pearson r</th><th>Sample Count</th><th>Direction</th></tr>
+                      </thead>
+                      <tbody>
+                        {profile.correlations.map((cr, idx) => (
+                          <tr key={idx}>
+                            <td><b>{cr.x}</b></td>
+                            <td><b>{cr.y}</b></td>
+                            <td>
+                              <span className="corr-cell" style={{ color: cr.pearson > 0 ? "#77e5ce" : "#ff7878" }}>
+                                {cr.pearson.toFixed(3)}
+                              </span>
+                            </td>
+                            <td>{cr.sample_size.toLocaleString()}</td>
+                            <td>{cr.pearson > 0 ? "Positive Correlation" : "Negative Correlation"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="muted">Dataset does not contain enough numeric pairs for correlation computation.</p>
+                )}
+              </div>
+            )}
+
+            {/* EDA: Relationships (Scatter) */}
+            {edaTab === "Relationships" && (
+              <section className="chart-grid">
+                {charts.filter(c => c.kind === "scatter").map((sChart, idx) => (
+                  <ChartPanel key={idx} chart={sChart} />
+                ))}
+                {charts.filter(c => c.kind === "scatter").length === 0 && (
+                  <p className="muted">No numeric relationships available for scatter visualization.</p>
+                )}
+              </section>
+            )}
+
+            {/* EDA: Categories */}
+            {edaTab === "Categories" && (
+              <section className="chart-grid">
+                {charts.filter(c => c.kind === "pie" || c.kind === "bar").map((cChart, idx) => (
+                  <ChartPanel key={idx} chart={cChart} />
+                ))}
+              </section>
+            )}
+
+            {/* EDA: Time Series */}
+            {edaTab === "Time Series" && (
+              <div>
+                {charts.filter(c => c.kind === "line" || c.kind === "area").map((tChart, idx) => (
+                  <ChartPanel key={idx} chart={tChart} />
+                ))}
+                {charts.filter(c => c.kind === "line" || c.kind === "area").length === 0 && (
+                  <p className="muted">No temporal dates detected for time-series trend analysis.</p>
+                )}
+              </div>
+            )}
+
+            {/* EDA: Outliers */}
+            {edaTab === "Outliers" && (
+              <div>
+                <h2>Outlier Distribution Summary</h2>
+                <div className="table-scroll">
+                  <table>
+                    <thead>
+                      <tr><th>Column</th><th>Outlier Count</th><th>Min</th><th>Max</th><th>Q1 - 1.5×IQR</th><th>Q3 + 1.5×IQR</th></tr>
+                    </thead>
+                    <tbody>
+                      {profile.numeric_statistics.map(st => {
+                        const iqr = st.q3 - st.q1;
+                        return (
+                          <tr key={st.column}>
+                            <td><b>{st.column}</b></td>
+                            <td><span className={st.outlier_count > 0 ? "severity-badge medium" : ""}>{st.outlier_count}</span></td>
+                            <td>{st.min.toLocaleString()}</td>
+                            <td>{st.max.toLocaleString()}</td>
+                            <td>{(st.q1 - 1.5 * iqr).toFixed(2)}</td>
+                            <td>{(st.q3 + 1.5 * iqr).toFixed(2)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* 5. FORECASTS VIEW */}
+        {!loading && profile && activeView === "forecast" && (
+          <section className="panel glass page-panel">
+            <div className="panel-head">
+              <div>
+                <span>AUTOMATIC FORECASTING ENGINE</span>
+                <h2>{forecast.metric === "revenue" ? "Revenue Projection" : "Volume Forecast"}</h2>
+                <p className="muted">{forecast.model_name || "Predictive time-series model"}</p>
+              </div>
+            </div>
+
+            {forecast.available ? (
+              <>
+                <div className="stats dynamic-kpis" style={{ margin: "16px 0" }}>
+                  {forecast.values.slice(0, 3).map((v, idx) => (
+                    <div className="stat glass" key={v.period}>
+                      <div className="icon"><TrendingUp size={18} /></div>
+                      <div>
+                        <span>{idx === 0 ? "Next Period" : `Period +${idx + 1}`} ({v.period})</span>
+                        <strong>{forecast.metric === "revenue" ? `₹${Number(v.value).toLocaleString("en-IN", { maximumFractionDigits: 2 })}` : `${v.value.toLocaleString()} units`}</strong>
+                        <small>95% CI: [{v.lower?.toLocaleString()} – {v.upper?.toLocaleString()}]</small>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="chart forecast-chart" style={{ height: 280 }}>
+                  <ResponsiveContainer>
+                    <LineChart data={[
+                      ...forecast.history.map(item => ({ ...item, historical: item.value })),
+                      ...forecast.values.map(item => ({ ...item, projected: item.value }))
+                    ]}>
+                      <CartesianGrid stroke="#ffffff10" vertical={false} />
+                      <XAxis dataKey="period" tick={{ fill: "#8291a8", fontSize: 10 }} />
+                      <YAxis hide />
+                      <Tooltip contentStyle={{ background: "#0c1827", border: "1px solid #ffffff20", borderRadius: 8 }} />
+                      <Line type="monotone" dataKey="historical" name="Historical Actuals" stroke="#77e5ce" strokeWidth={3} dot={false} />
+                      <Line type="monotone" dataKey="projected" name="Projected Forecast" stroke="#f0cf55" strokeWidth={3} strokeDasharray="5 5" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+                <small className="source-note">Model: {forecast.model_name} · Source: {forecast.source_columns?.join(", ")} · {forecast.confidence_interval}</small>
+              </>
+            ) : (
+              <div className="forecast-unavailable">
+                <h3>Forecast Unavailable</h3>
+                <p>{forecast.reason || "This dataset does not contain sufficient temporal information for reliable forecasting."}</p>
+                <div style={{ marginTop: 12 }}>
+                  <p>You can still use:</p>
+                  <ul>
+                    <li>✓ Data profiling</li>
+                    <li>✓ Cleaning pipeline</li>
+                    <li>✓ KPI analysis</li>
+                    <li>✓ Dynamic visualizations</li>
+                    <li>✓ Anomaly detection</li>
+                  </ul>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* 6. ANOMALIES VIEW */}
+        {!loading && profile && activeView === "anomalies" && (
+          <section className="panel glass page-panel">
+            <div className="panel-head">
+              <div>
+                <span>AUTOMATIC ANOMALY DETECTION</span>
+                <h2>Statistical Outliers & Shifts</h2>
+                <p className="muted">Multi-model anomaly detection using IQR, Z-Score, Isolation Forest, and Rolling 2σ.</p>
+              </div>
+            </div>
+
+            <div className="anomaly-grid">
+              {anomalies.map(anom => (
+                <div key={anom.id} className={`anomaly-card ${anom.severity}`}>
+                  <div className="anomaly-header">
+                    <span className="anomaly-metric">{anom.metric}</span>
+                    <span className={`severity-badge ${anom.severity}`}>{anom.severity}</span>
+                  </div>
+                  <b style={{ fontSize: 15, color: "#f6f4ec" }}>{anom.title}</b>
+                  <div className="anomaly-value-row">
+                    <strong>{typeof anom.observed === "number" ? anom.observed.toLocaleString() : anom.observed}</strong>
+                    <span className="anomaly-deviation">{anom.deviation}</span>
+                  </div>
+                  <p style={{ margin: "4px 0", fontSize: 12, color: "#b5ac95" }}>{anom.detail}</p>
+                  <small style={{ color: "#7a7465", fontSize: 10 }}>Method: {anom.method}</small>
+                  <button
+                    type="button"
+                    className="btn-investigate"
+                    onClick={() => setInvestigatingAnomaly(anom)}
+                  >
+                    <Search size={14} /> Investigate
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {anomalies.length === 0 && (
+              <p className="muted">No numerical anomalies detected outside standard bounds.</p>
+            )}
+          </section>
+        )}
+
+        {/* 7. ALERTS VIEW */}
+        {!loading && profile && activeView === "alerts" && (
+          <section className="panel glass page-panel alert-list">
+            <div className="panel-head">
+              <div>
+                <span>DATA QUALITY MONITORING</span>
+                <h2>Active Alerts</h2>
+                <p className="muted">Automated checks covering missing values, duplicates, and type consistency.</p>
+              </div>
+            </div>
+            {alerts.map((item, idx) => (
+              <div className="signal" key={idx}>
+                <AlertTriangle size={18} />
+                <div style={{ flex: 1 }}>
+                  <b>{item.title}</b>
+                  <p>{item.detail}</p>
+                  <small className="source-note">Source: {item.source_columns?.join(", ") || "Dataset-wide check"}</small>
+                </div>
+                <span className={`severity-badge ${item.severity || "medium"}`}>{item.severity || "medium"}</span>
+              </div>
+            ))}
+          </section>
+        )}
+
+        {/* 8. REPORTS VIEW */}
+        {!loading && profile && activeView === "reports" && (
+          <section className="panel glass page-panel report-view">
+            <div className="panel-head">
+              <div>
+                <span>GENERATED EXECUTIVE REPORT</span>
+                <h2>{profile.filename} Intelligence Report</h2>
+              </div>
+              <div className="studio-actions">
+                <a className="upload download-clean" href={`${API_BASE}/api/dataset/report?dataset_id=${encodeURIComponent(datasetId)}`} download={`${profile.filename}.analysis.json`}>
+                  <Download size={15} /> Export JSON
+                </a>
+                <button className="upload" type="button" onClick={() => window.print()}>
+                  <FileText size={15} /> Print / Save PDF
+                </button>
+              </div>
+            </div>
+
+            <div className="dataset-summary">
+              <div><span>Dataset</span><strong>{profile.filename}</strong></div>
+              <div><span>Records</span><strong>{profile.rows.toLocaleString()}</strong></div>
+              <div><span>Quality Score</span><strong>{profile.quality_score}%</strong></div>
+              <div><span>Domain</span><strong>{profile.dataset_type}</strong></div>
+              <div><span>Active Alerts</span><strong>{alerts.length}</strong></div>
+            </div>
+
+            <h3>Key Performance Indicators</h3>
+            <div className="report-kpis">
+              {kpis.map(item => (
+                <p key={item.label}>
+                  <b>{item.label}:</b> {formatValue(item, compactNumbers)} <small>({item.source_columns?.join(", ") || "Profile"})</small>
+                </p>
+              ))}
+            </div>
+
+            <h3>Evidence-Backed Insights</h3>
+            {insights.map((item, idx) => (
+              <div className="insight-row" key={idx}>
+                <b>{item.title}</b>
+                <p>{item.text}</p>
+                <small>Source: {item.source_columns?.join(", ")} · {item.calculation}</small>
+              </div>
+            ))}
+
+            <h3>Quality Issues & Active Alerts</h3>
+            {alerts.map((item, idx) => (
+              <p key={idx}><b>{item.title}:</b> {item.detail}</p>
+            ))}
+          </section>
+        )}
+
+        {/* 9. DATASET VIEW (Live Workspace) */}
+        {!loading && profile && activeView === "dataset" && (
+          <section className="panel glass page-panel">
+            <div className="panel-head">
+              <div>
+                <span>LIVE DATA WORKSPACE</span>
+                <h2>{profile.filename} Session</h2>
+              </div>
+              <div className="studio-actions">
+                <button className="upload" type="button" onClick={() => fileInput.current?.click()}>
+                  <Upload size={15} /> Replace Dataset
+                </button>
+                <a className="upload download-clean" href={`${API_BASE}/api/dataset/export-clean${datasetQuery}`}>
+                  <Download size={15} /> Cleaned CSV
+                </a>
+                {datasetId !== "demo-sales" && (
+                  <button className="text-button remove-dataset-link" type="button" onClick={removeDataset}>
+                    Remove Dataset
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="dataset-summary">
+              <div><span>Status</span><strong>Analyzed & Live</strong></div>
+              <div><span>Rows</span><strong>{profile.rows.toLocaleString()}</strong></div>
+              <div><span>Columns</span><strong>{profile.column_count}</strong></div>
+              <div><span>File Size</span><strong>{profile.file_size ? `${(profile.file_size / (1024 * 1024)).toFixed(2)} MB` : "Bundled"}</strong></div>
+              <div><span>Uploaded</span><strong>{profile.created_at ? new Date(profile.created_at).toLocaleString() : "Bundled Demo"}</strong></div>
+            </div>
+          </section>
+        )}
+
+        {/* 10. SETTINGS VIEW */}
+        {!loading && profile && activeView === "settings" && (
+          <section className="panel glass page-panel settings-view">
+            <div className="panel-head">
+              <div>
+                <span>PLATFORM PREFERENCES</span>
+                <h2>Display & Privacy Settings</h2>
+              </div>
+            </div>
+
+            <label className="setting-row" style={{ display: "flex", justifyContent: "space-between", padding: "16px 0", borderBottom: "1px solid #ffffff12" }}>
+              <span>
+                <b>Compact Metric Notation</b>
+                <small style={{ display: "block", color: "#8c8572" }}>Format numbers using K / M shorthand for compact card presentation.</small>
+              </span>
+              <input
+                type="checkbox"
+                checked={compactNumbers}
+                onChange={e => {
+                  setCompactNumbers(e.target.checked);
+                  localStorage.setItem("insightops.compactNumbers", String(e.target.checked));
+                  addToast("Preferences saved.");
+                }}
+              />
+            </label>
+
+            <div className="setting-row" style={{ display: "flex", justifyContent: "space-between", padding: "16px 0", borderBottom: "1px solid #ffffff12" }}>
+              <span>
+                <b>Deterministic PII Masking</b>
+                <small style={{ display: "block", color: "#8c8572" }}>Emails and phone numbers are irreversibly masked before analytics processing.</small>
+              </span>
+              <ShieldCheck size={20} style={{ color: "#e6c348" }} />
+            </div>
+
+            <div className="setting-row" style={{ display: "flex", justifyContent: "space-between", padding: "16px 0" }}>
+              <span>
+                <b>Storage Engine</b>
+                <small style={{ display: "block", color: "#8c8572" }}>Dataset files are stored locally under <code>data/uploads/</code>.</small>
+              </span>
+              <Database size={20} style={{ color: "#e6c348" }} />
+            </div>
+          </section>
+        )}
+
+        {/* PREVIEW MODAL */}
+        {preview && (
+          <div className="upload-modal-backdrop" role="presentation" onClick={e => { if (e.target === e.currentTarget) cancelPreview(); }}>
+            <section className="upload-modal panel glass" role="dialog" aria-modal="true" aria-labelledby="preview-title">
+              <div className="panel-head">
+                <div>
+                  <span>DATA INGESTION STUDIO</span>
+                  <h2 id="preview-title">Preview Before Analysis</h2>
+                </div>
+                <button className="icon-action" type="button" onClick={cancelPreview} aria-label="Cancel upload"><X size={17} /></button>
+              </div>
+
+              <div
+                className="file-dropzone"
+                onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add("drag-over"); }}
+                onDragLeave={e => e.currentTarget.classList.remove("drag-over")}
+                onDrop={async e => {
+                  e.preventDefault();
+                  e.currentTarget.classList.remove("drag-over");
+                  const file = e.dataTransfer.files?.[0];
+                  if (file) {
+                    setStagedFile(file);
+                    setPreview(null);
+                    await previewFile(file);
+                  }
+                }}
+              >
+                <span>Drop a replacement file here, or browse.</span>
+                <button type="button" onClick={() => fileInput.current?.click()}>Browse files</button>
+              </div>
+
+              <div className="preview-file-meta">
+                <b>{preview.filename}</b>
+                <span>{(preview.file_size / (1024 * 1024)).toFixed(2)} MB</span>
+                {preview.delimiter && <span>Delimiter: <code>{preview.delimiter === "\t" ? "TAB" : preview.delimiter}</code></span>}
+                {preview.encoding && <span>Encoding: {preview.encoding.toUpperCase()}</span>}
+                <span>{preview.total_columns || preview.columns.length} columns detected</span>
+              </div>
+
+              {preview.sheet_names?.length > 0 && (
+                <label className="sheet-picker">
+                  Worksheet:
+                  <select
+                    value={selectedSheet}
+                    onChange={async e => {
+                      const val = e.target.value;
+                      setSelectedSheet(val);
+                      await previewFile(stagedFile, val);
+                    }}
+                    aria-label="Select Excel worksheet"
+                  >
+                    {preview.sheet_names.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </label>
+              )}
+
+              <div className="preview-schema">
+                {preview.columns.map(col => (
+                  <span key={col.column_name}>
+                    {col.column_name} <i>{col.semantic_type}</i>
+                  </span>
+                ))}
+              </div>
+
+              <div className="table-scroll preview-table">
+                <table>
+                  <thead>
+                    <tr>{preview.columns.map(col => <th key={col.column_name}>{col.column_name}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {preview.preview_rows.map((row, idx) => (
+                      <tr key={idx}>
+                        {preview.columns.map(col => <td key={col.column_name}>{row[col.column_name] ?? "Missing"}</td>)}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <p className="preview-note">PII contact fields are masked. Non-destructive cleaning preserves raw data.</p>
+              <div className="preview-actions">
+                <button className="text-button" type="button" onClick={cancelPreview} disabled={uploading}>Cancel</button>
+                <button className="upload" type="button" onClick={analyzeStagedDataset} disabled={uploading || previewing}>
+                  <Database size={16} />
+                  {uploading ? "Analyzing..." : "Analyze Dataset"}
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
+
+        {/* VIEW CHANGES (CLEANING DIFF) MODAL */}
+        {viewChangesOpen && profile?.cleaning_report && (
+          <div className="upload-modal-backdrop" role="presentation" onClick={e => { if (e.target === e.currentTarget) setViewChangesOpen(false); }}>
+            <section className="upload-modal panel glass" role="dialog" aria-modal="true" aria-labelledby="changes-title">
+              <div className="panel-head">
+                <div>
+                  <span>AUTOMATIC DATA CLEANING ENGINE</span>
+                  <h2 id="changes-title">Data Cleaning Report & Changes</h2>
+                </div>
+                <button className="icon-action" type="button" onClick={() => setViewChangesOpen(false)} aria-label="Close dialog"><X size={17} /></button>
+              </div>
+
+              {/* Before vs After Score Banner */}
+              <div className="cleaning-score-banner">
+                <div>
+                  <h3>Quality Score Improvement</h3>
+                  <p>Before: {profile.cleaning_report.before?.quality_score}% → After: {profile.cleaning_report.after?.quality_score}%</p>
+                </div>
+                <div>
+                  <h3>Row Volume Health</h3>
+                  <p>Original Rows: {profile.cleaning_report.before?.rows.toLocaleString()} · Clean Rows: {profile.cleaning_report.after?.rows.toLocaleString()}</p>
+                </div>
+              </div>
+
+              <h3>Applied Cleaning Actions</h3>
+              <ul>
+                {profile.cleaning_report.actions.map(action => (
+                  <li key={action} style={{ margin: "6px 0", color: "#f0cf55" }}>{action}</li>
+                ))}
+              </ul>
+
+              <h3 style={{ marginTop: 20 }}>Column Changes & Transformations</h3>
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Column</th>
+                      <th>Cleaned Type</th>
+                      <th>Whitespace Trimmed</th>
+                      <th>Missing Before</th>
+                      <th>Missing After</th>
+                      <th>Imputation</th>
+                      <th>Invalid Coerced</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {profile.cleaning_report.diff?.map(colDiff => (
+                      <tr key={colDiff.column}>
+                        <td><b>{colDiff.column}</b></td>
+                        <td><span className="badge">{colDiff.cleaned_type}</span></td>
+                        <td>{colDiff.whitespace_trimmed}</td>
+                        <td>{colDiff.missing_before}</td>
+                        <td>{colDiff.missing_after}</td>
+                        <td>{colDiff.imputed_count > 0 ? `${colDiff.imputed_count} (${colDiff.imputation_strategy})` : "None"}</td>
+                        <td>{colDiff.invalid_coerced}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="preview-actions">
+                <button className="upload" type="button" onClick={() => setViewChangesOpen(false)}>Done</button>
+              </div>
+            </section>
+          </div>
+        )}
+
+        {/* INVESTIGATE ANOMALY MODAL */}
+        {investigatingAnomaly && (
+          <div className="upload-modal-backdrop" role="presentation" onClick={e => { if (e.target === e.currentTarget) setInvestigatingAnomaly(null); }}>
+            <section className="upload-modal panel glass" role="dialog" aria-modal="true" aria-labelledby="anomaly-title" style={{ maxWidth: 680 }}>
+              <div className="panel-head">
+                <div>
+                  <span className={`severity-badge ${investigatingAnomaly.severity}`}>{investigatingAnomaly.severity} SEVERITY ANOMALY</span>
+                  <h2 id="anomaly-title">{investigatingAnomaly.title}</h2>
+                </div>
+                <button className="icon-action" type="button" onClick={() => setInvestigatingAnomaly(null)}><X size={17} /></button>
+              </div>
+
+              <div className="dataset-summary">
+                <div><span>Metric</span><strong>{investigatingAnomaly.metric}</strong></div>
+                <div><span>Observed</span><strong>{typeof investigatingAnomaly.observed === "number" ? investigatingAnomaly.observed.toLocaleString() : investigatingAnomaly.observed}</strong></div>
+                <div><span>Deviation</span><strong>{investigatingAnomaly.deviation}</strong></div>
+                <div><span>Method</span><strong>{investigatingAnomaly.method}</strong></div>
+              </div>
+
+              <p style={{ lineHeight: 1.6, color: "#d8cfb5" }}>{investigatingAnomaly.explanation || investigatingAnomaly.detail}</p>
+
+              {investigatingAnomaly.expected_range?.length === 2 && (
+                <div className="pii-notice" style={{ marginTop: 12 }}>
+                  <Info size={18} />
+                  <div>
+                    <b>Expected Normal Range</b>
+                    <p>{investigatingAnomaly.expected_range[0].toLocaleString()} to {investigatingAnomaly.expected_range[1].toLocaleString()}</p>
+                  </div>
+                </div>
+              )}
+
+              {investigatingAnomaly.investigation_details?.neighboring_periods && (
+                <div>
+                  <h4 style={{ margin: "14px 0 8px", color: "#f6f4ec" }}>Surrounding Timeline Baseline</h4>
+                  <div className="table-scroll">
+                    <table>
+                      <thead><tr><th>Period</th><th>Value</th></tr></thead>
+                      <tbody>
+                        {investigatingAnomaly.investigation_details.neighboring_periods.map((np, i) => (
+                          <tr key={i} style={np.period === investigatingAnomaly.period ? { background: "#e6c34822", fontWeight: 700 } : {}}>
+                            <td>{np.period}</td>
+                            <td>{np.value.toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              <div className="preview-actions">
+                <button className="upload" type="button" onClick={() => setInvestigatingAnomaly(null)}>Close Investigation</button>
+              </div>
+            </section>
+          </div>
+        )}
+
+        <footer>
+          InsightOps AI · Universal Live Data Intelligence Platform · Session {datasetId === "demo-sales" ? "demo" : datasetId.slice(0, 8)}
+        </footer>
+      </main>
+    </div>
+  );
 }
-
-export default App;

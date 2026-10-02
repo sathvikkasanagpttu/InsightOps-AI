@@ -305,7 +305,7 @@ def test_excel_xlsx_upload(client):
 
 
 def test_excel_xls_upload(client):
-    import xlwt
+    xlwt = pytest.importorskip("xlwt")
 
     workbook = xlwt.Workbook()
     sheet = workbook.add_sheet("Leads")

@@ -1,45 +1,108 @@
-# Dataset API
+# InsightOps AI — API Reference Manual
 
-Base URL for local development: `http://localhost:8000`. Uploads are multipart form data using field `file`; uploaded datasets return a `dataset_id` used by all subsequent calls. Maximum size is 50 MB. Accepted extensions are `.csv`, `.xlsx`, `.xls`.
+Base URL for local development: `http://localhost:8000`.  
+Interactive OpenAPI / Swagger documentation is available at `http://localhost:8000/docs`.
 
-## Upload Flow
+---
 
-1. `POST /api/datasets/preview` with multipart `file`; optional `sheet_name` selects an Excel sheet. Returns detected headers/types and up to 10 sample rows. Email and phone preview values are masked. Preview does not persist a session.
-2. `POST /api/datasets/upload` with multipart `file`; optional `sheet_name`. Returns the session profile and ID, stores the original and clean copy in `data/uploads/<dataset_id>/`.
-3. Use that ID on profile/analysis calls. Sessions can be removed with `DELETE /api/datasets/{dataset_id}`; `demo-sales` is protected.
+## Ingestion & Upload Endpoints
 
-## Session Routes
+### 1. Ingestion Preview (Dry Run)
+- **Endpoint**: `POST /api/datasets/preview`
+- **Content-Type**: `multipart/form-data`
+- **Parameters**:
+  - `file`: CSV, XLSX, or XLS file binary (up to 50 MB)
+  - `sheet_name` *(optional)*: Target sheet name for Excel workbooks
+- **Response**:
+  ```json
+  {
+    "filename": "sales.csv",
+    "file_size": 24192,
+    "extension": "csv",
+    "sheets": [],
+    "detected_delimiter": ",",
+    "detected_encoding": "utf-8",
+    "row_count_estimate": 100,
+    "columns": [
+      {"name": "revenue", "inferred_type": "numeric"},
+      {"name": "region", "inferred_type": "categorical"}
+    ],
+    "sample_rows": [
+      {"revenue": 1200.5, "region": "North"}
+    ]
+  }
+  ```
 
-- `GET /api/datasets/{dataset_id}`: session summary and status.
-- `GET /api/datasets/{dataset_id}/profile`: dataset classification, file details, schema, KPIs, charts, correlations, numeric statistics, cleaning report, quality, insights, alerts and forecast.
-- `POST /api/datasets/{dataset_id}/clean`: cleaning actions and before/after quality summary. The uploaded source remains unchanged.
-- `GET /api/datasets/{dataset_id}/kpis`
-- `GET /api/datasets/{dataset_id}/visualizations`
-- `GET /api/datasets/{dataset_id}/insights`
-- `GET /api/datasets/{dataset_id}/anomalies`
-- `GET /api/datasets/{dataset_id}/forecast`
-- `POST /api/datasets/{dataset_id}/ask` with JSON `{"question":"Which region has the most records?"}`. Returns answer, evidence, source columns and calculation.
-- `GET /api/datasets/{dataset_id}/report`: JSON analysis report.
-- `GET /api/datasets/{dataset_id}/download`: cleaned CSV.
-- `GET /api/dataset/export-clean.xlsx?dataset_id=...`: cleaned Excel workbook.
-- `GET /api/dataset/rows?dataset_id=...&page=1&page_size=25&search=...&sort_by=...&sort_order=asc`: paginated row explorer. Sensitive cells are masked and excluded from search.
+### 2. Dataset Upload & Ingestion
+- **Endpoint**: `POST /api/datasets/upload` (or `POST /api/dataset/upload`)
+- **Content-Type**: `multipart/form-data`
+- **Parameters**:
+  - `file`: CSV, XLSX, or XLS file binary
+  - `sheet_name` *(optional)*: Sheet selection for Excel workbooks
+- **Response**: Full Dataset Profile object containing `dataset_id`, `dataset_type`, `quality_score`, `kpis`, `charts`, `insights`, `anomalies`, `forecast`, and `cleaning_report`.
 
-## Resource Routes
+---
 
-The UI uses these resource-style equivalents:
+## Analytics & Profile Endpoints
 
-- `GET /api/dataset/profile?dataset_id=...`
-- `GET /api/dataset/schema?dataset_id=...`
-- `GET /api/dataset/quality?dataset_id=...`
-- `GET /api/dataset/kpis?dataset_id=...`
-- `GET /api/dataset/charts?dataset_id=...`
-- `GET /api/dataset/insights?dataset_id=...`
-- `GET /api/dataset/forecast?dataset_id=...`
-- `GET /api/dataset/alerts?dataset_id=...`
-- `POST /api/analyst/ask` with JSON `{"dataset_id":"...","question":"..."}`
+All analytics endpoints support both path-based routing (`/api/datasets/{dataset_id}/...`) and query-parameter routing (`/api/dataset/...`):
 
-`GET /api/health` is independent of dataset selection. Legacy demo routes remain available and accept an optional `dataset_id` query parameter.
+| Path Route | Query Parameter Route | Method | Description |
+| :--- | :--- | :--- | :--- |
+| `/api/datasets/{id}` | `/api/dataset?dataset_id={id}` | `GET` | Summary metadata for active dataset session |
+| `/api/datasets/{id}/profile` | `/api/dataset/profile?dataset_id={id}` | `GET` | Full statistical profile, health scores, and metrics |
+| `/api/datasets/{id}/schema` | `/api/dataset/schema?dataset_id={id}` | `GET` | Detected column types, uniqueness, and PII flags |
+| `/api/datasets/{id}/quality` | `/api/dataset/quality?dataset_id={id}` | `GET` | Overall score and component sub-scores (0–100) |
+| `/api/datasets/{id}/kpis` | `/api/dataset/kpis?dataset_id={id}` | `GET` | Domain-tailored KPIs with mathematical formulas |
+| `/api/datasets/{id}/visualizations` | `/api/dataset/charts?dataset_id={id}` | `GET` | Auto-generated chart recommendations & series data |
+| `/api/datasets/{id}/insights` | `/api/dataset/insights?dataset_id={id}` | `GET` | Verifiable natural language findings & calculations |
+| `/api/datasets/{id}/anomalies` | `/api/dataset/anomalies?dataset_id={id}` | `GET` | Multi-method outlier list with severity scores |
+| `/api/datasets/{id}/forecast` | `/api/dataset/forecast?dataset_id={id}` | `GET` | Double Exponential Smoothing forecast with 95% CIs |
+| `/api/datasets/{id}/alerts` | `/api/dataset/alerts?dataset_id={id}` | `GET` | Operational warnings & threshold alerts |
+| `/api/datasets/{id}/report` | `/api/dataset/report?dataset_id={id}` | `GET` | Complete audit and analytical JSON report |
+| `/api/datasets/{id}` | `/api/datasets/{id}` | `DELETE` | Removes session from disk (except demo fixtures) |
 
-## Response Guarantees
+---
 
-Analyst responses include the original question, answer, evidence, `source_columns`, and `calculation`. Forecast responses include `available`, `reason` when unavailable, selected metric, source columns, history and projected values. Derived e-commerce revenue is explicitly represented as `price × quantity`; it is not inserted into the preserved clean/raw dataset.
+## AI Analyst Query Endpoint
+
+- **Endpoint**: `POST /api/datasets/{dataset_id}/ask` (or `POST /api/analyst/ask`)
+- **Content-Type**: `application/json`
+- **Request Body**:
+  ```json
+  {
+    "dataset_id": "session-12345",
+    "question": "What is the average salary by department?"
+  }
+  ```
+- **Response**:
+  ```json
+  {
+    "question": "What is the average salary by department?",
+    "answer": "Department Engineering has the highest average salary at ₹12.4L across 4 employees.",
+    "evidence": [
+      {"label": "Top Department", "value": "Engineering"},
+      {"label": "Average Salary", "value": "124,000"}
+    ],
+    "source_columns": ["department", "salary"],
+    "calculation": "GROUP_BY(department) -> AVG(salary)"
+  }
+  ```
+
+---
+
+## Data Grid Explorer & Export Endpoints
+
+### 1. Paginated Rows Explorer
+- **Endpoint**: `GET /api/dataset/rows` or `GET /api/datasets/{dataset_id}/rows`
+- **Query Parameters**:
+  - `dataset_id`: Session ID
+  - `page`: Page index (default: `1`)
+  - `page_size`: Rows per page (default: `25`, max: `100`)
+  - `search`: Substring search query across all non-sensitive columns
+  - `sort_by`: Column name to sort on
+  - `sort_order`: `asc` or `desc`
+
+### 2. Export Cleaned Dataset
+- **Cleaned CSV**: `GET /api/datasets/{dataset_id}/download` (or `/api/dataset/export-clean?dataset_id={id}`)
+- **Cleaned Excel (.xlsx)**: `GET /api/datasets/{dataset_id}/download.xlsx` (or `/api/dataset/export-clean.xlsx?dataset_id={id}`)
