@@ -555,6 +555,8 @@
   flex-direction: column;
   gap: 0.5rem;
   width: 100%;
+  position: relative;
+  z-index: 100;
 }
 
 .bi-slicers-bar {
@@ -562,11 +564,14 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 0.75rem;
-  background: rgba(12, 24, 39, 0.6);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(12, 24, 39, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;
-  padding: 0.6rem 1rem;
+  padding: 0.65rem 1rem;
+  position: relative;
+  z-index: 100;
 }
 
 .bi-slicer-title {
@@ -626,22 +631,41 @@
   position: relative;
 }
 
+.bi-slicer-dropdown-wrapper.open {
+  z-index: 200;
+}
+
 .bi-slicer-dropdown-btn {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: #94a3b8;
+  gap: 0.4rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
   font-size: 0.75rem;
-  padding: 0.3rem 0.65rem;
+  font-weight: 500;
+  padding: 0.35rem 0.7rem;
   border-radius: 6px;
   cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.bi-slicer-dropdown-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 .bi-slicer-dropdown-btn.has-filter {
   border-color: #00b4d8;
+  background: rgba(0, 180, 216, 0.12);
   color: #00b4d8;
+  font-weight: 600;
+}
+
+.bi-slicer-dropdown-btn.active-open {
+  border-color: #00b4d8;
+  box-shadow: 0 0 0 2px rgba(0, 180, 216, 0.25);
 }
 
 .bi-filter-count-badge {
@@ -655,80 +679,221 @@
 
 .bi-slicer-dropdown-menu {
   position: absolute;
-  top: 100%;
+  top: calc(100% + 6px);
   left: 0;
-  margin-top: 5px;
-  width: 200px;
-  background: #0c1827;
-  border: 1px solid rgba(0, 180, 216, 0.3);
-  border-radius: 8px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-  z-index: 50;
-  padding: 0.5rem;
+  min-width: 240px;
+  max-width: 300px;
+  background: #0b1524 !important;
+  border: 1px solid rgba(0, 180, 216, 0.45) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
+  z-index: 9999 !important;
+  padding: 0.65rem 0.75rem !important;
+}
+
+.bi-slicer-dropdown-menu.align-right {
+  left: auto !important;
+  right: 0 !important;
 }
 
 .bi-dropdown-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 0.72rem;
+  font-size: 0.74rem;
   font-weight: 700;
-  color: #94a3b8;
-  padding-bottom: 0.3rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  margin-bottom: 0.4rem;
+  color: #f1f5f9;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 0.45rem;
+}
+
+.bi-dropdown-title {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.bi-dropdown-title small {
+  color: #00b4d8;
+  font-weight: 500;
+  font-size: 0.68rem;
 }
 
 .bi-clear-dim-btn {
   background: transparent;
   border: none;
   color: #ef4444;
-  font-size: 0.65rem;
+  font-size: 0.68rem;
   cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.bi-clear-dim-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.bi-clear-dim-btn:not(:disabled):hover {
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.bi-dropdown-search-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 4px 8px;
+  margin-bottom: 6px;
+}
+
+.bi-dropdown-search-row:focus-within {
+  border-color: #00b4d8;
+}
+
+.bi-dropdown-search-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #f1f5f9;
+  font-size: 0.72rem;
+  width: 100%;
+}
+
+.bi-dropdown-search-input::placeholder {
+  color: #64748b;
+}
+
+.bi-search-clear {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 0;
+}
+
+.bi-search-clear:hover {
+  color: #cbd5e1;
+}
+
+.bi-dropdown-quick-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.bi-quick-btn {
+  background: transparent;
+  border: none;
+  color: #00b4d8;
+  font-size: 0.68rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.bi-quick-btn:hover {
+  background: rgba(0, 180, 216, 0.15);
+}
+
+.bi-quick-sep {
+  color: #475569;
+  font-size: 0.7rem;
 }
 
 .bi-dropdown-list {
-  max-height: 180px;
+  max-height: 220px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
+.bi-dropdown-list::-webkit-scrollbar {
+  width: 4px;
+}
+.bi-dropdown-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
 .bi-dropdown-item {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.3rem 0.4rem;
-  border-radius: 4px;
+  gap: 0.5rem;
+  padding: 0.35rem 0.45rem;
+  border-radius: 5px;
   cursor: pointer;
   font-size: 0.75rem;
   color: #cbd5e1;
+  transition: all 0.12s ease;
 }
 
 .bi-dropdown-item:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
 }
 
 .bi-dropdown-item.selected {
   background: rgba(0, 180, 216, 0.15);
   color: #00b4d8;
+  font-weight: 500;
+}
+
+.bi-item-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .bi-checkbox {
   width: 14px;
   height: 14px;
+  min-width: 14px;
   border: 1px solid #64748b;
   border-radius: 3px;
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: all 0.12s ease;
 }
 
 .bi-checkbox.checked {
   background: #00b4d8;
   border-color: #00b4d8;
   color: #0b1524;
+}
+
+.bi-dropdown-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 6px;
+  margin-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 0.65rem;
+  color: #64748b;
+}
+
+.bi-selected-note {
+  color: #00b4d8;
+  font-weight: 600;
+}
+
+.bi-dropdown-empty {
+  padding: 12px 6px;
+  text-align: center;
+  font-size: 0.72rem;
+  color: #64748b;
 }
 
 .bi-clear-all-btn {

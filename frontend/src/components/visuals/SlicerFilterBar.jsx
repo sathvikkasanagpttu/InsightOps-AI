@@ -1,6 +1,12 @@
-import React, { useState } from "react";
-import { Filter, Calendar, Sliders, X, RotateCcw, ChevronDown, Check } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { Filter, Calendar, Sliders, X, RotateCcw, ChevronDown, Check, Search } from "lucide-react";
 import { formatNumber } from "./visualUtils";
+
+const DIMENSION_SEMANTICS_LIST = [
+  "category", "region", "status", "channel", "department", "country",
+  "source", "location", "delivery_mode", "person", "gender", "segment",
+  "priority", "stage", "type"
+];
 
 export default function SlicerFilterBar({
   schema = [],
@@ -12,25 +18,66 @@ export default function SlicerFilterBar({
   dimensions = []
 }) {
   const [openDropdown, setOpenDropdown] = useState(null);
+  const [searchQueries, setSearchQueries] = useState({});
+  const barRef = useRef(null);
 
-  // Identify top categorical dimensions for slicers (unique_count between 2 and 12)
+  // Close dropdown on click outside or Escape
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (barRef.current && !barRef.current.contains(event.target)) {
+        setOpenDropdown(null);
+      }
+    }
+    function handleKeyDown(event) {
+      if (event.key === "Escape") {
+        setOpenDropdown(null);
+      }
+    }
+
+    if (openDropdown) {
+      document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("keydown", handleKeyDown);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openDropdown]);
+
+  // Identify top categorical dimensions for slicers (up to 8 dimensions)
   const slicerDims = schema.filter(
     col =>
-      ["category", "region", "status", "channel", "department", "country"].includes(col.semantic_type) ||
-      (col.unique_count >= 2 && col.unique_count <= 10 && col.semantic_type !== "datetime")
-  ).slice(0, 4);
+      DIMENSION_SEMANTICS_LIST.includes(col.semantic_type?.toLowerCase()) ||
+      (col.unique_count >= 2 && col.unique_count <= 40 && !["datetime", "identifier", "email", "phone"].includes(col.semantic_type))
+  ).slice(0, 8);
 
   // Identify date column for date slicer
   const dateCol = schema.find(c => c.semantic_type === "datetime" || c.inferred_type === "datetime");
+
+  // Get distinct values for a dimension
+  function getDimensionValues(dim) {
+    const dimMeta = dimensions.find(
+      d => d.column?.toLowerCase() === dim.name?.toLowerCase() ||
+           d.column?.toLowerCase() === dim.original_name?.toLowerCase()
+    );
+
+    if (dimMeta?.values && dimMeta.values.length > 0) {
+      return dimMeta.values.map(v => typeof v === "object" ? v.label : String(v));
+    }
+    if (dim.sample_values && dim.sample_values.length > 0) {
+      return dim.sample_values.map(String);
+    }
+    return [];
+  }
 
   // Check if a category value is active in filters
   function isCategorySelected(colName, val) {
     const found = activeFilters.find(f => f.column === colName);
     if (!found) return false;
     if (found.operator === "in" && Array.isArray(found.value)) {
-      return found.value.includes(val);
+      return found.value.map(String).includes(String(val));
     }
-    return found.value === val;
+    return String(found.value) === String(val);
   }
 
   function toggleCategoryFilter(colName, val) {
@@ -49,6 +96,16 @@ export default function SlicerFilterBar({
       }
     }
     onFilterChange(nextList);
+  }
+
+  function selectAllValues(colName, vals) {
+    let nextList = [...activeFilters.filter(f => f.column !== colName)];
+    nextList.push({ column: colName, operator: "in", value: vals });
+    onFilterChange(nextList);
+  }
+
+  function clearDimFilter(colName) {
+    onFilterChange(activeFilters.filter(f => f.column !== colName));
   }
 
   // Preset Date Slicers
@@ -80,7 +137,7 @@ export default function SlicerFilterBar({
   const hasAnyFilter = activeFilters.length > 0 || activeCrossFilter !== null;
 
   return (
-    <div className="bi-slicer-container">
+    <div className="bi-slicer-container" ref={barRef}>
       {/* Top Slicers Bar */}
       <div className="bi-slicers-bar">
         <div className="bi-slicer-title">
@@ -128,55 +185,129 @@ export default function SlicerFilterBar({
         )}
 
         {/* Category Slicers */}
-        {slicerDims.map(dim => {
-          const dimMeta = dimensions.find(d => d.column === dim.name);
-          const sampleVals = dimMeta?.values ? dimMeta.values.map(v => v.label) : (dim.sample_values || []);
+        {slicerDims.map((dim, dimIdx) => {
+          const allVals = getDimensionValues(dim);
           const isOpen = openDropdown === dim.name;
           const activeFilterObj = activeFilters.find(f => f.column === dim.name);
           const activeCount = Array.isArray(activeFilterObj?.value)
             ? activeFilterObj.value.length
             : activeFilterObj ? 1 : 0;
 
+          const searchQuery = searchQueries[dim.name] || "";
+          const filteredVals = searchQuery.trim()
+            ? allVals.filter(v => String(v).toLowerCase().includes(searchQuery.toLowerCase()))
+            : allVals;
+
+          // Align right if it's among the last 3 items
+          const alignRight = dimIdx >= Math.max(1, slicerDims.length - 2);
+
           return (
-            <div key={dim.name} className="bi-slicer-dropdown-wrapper">
+            <div
+              key={dim.name}
+              className={`bi-slicer-dropdown-wrapper ${isOpen ? "open" : ""}`}
+            >
               <button
                 type="button"
-                className={`bi-slicer-dropdown-btn ${activeCount > 0 ? "has-filter" : ""}`}
-                onClick={() => setOpenDropdown(isOpen ? null : dim.name)}
+                className={`bi-slicer-dropdown-btn ${activeCount > 0 ? "has-filter" : ""} ${isOpen ? "active-open" : ""}`}
+                onClick={() => {
+                  setOpenDropdown(isOpen ? null : dim.name);
+                  if (!isOpen) {
+                    setSearchQueries(prev => ({ ...prev, [dim.name]: "" }));
+                  }
+                }}
               >
                 <span>{dim.original_name || dim.name}</span>
                 {activeCount > 0 && <span className="bi-filter-count-badge">{activeCount}</span>}
-                <ChevronDown size={12} />
+                <ChevronDown size={12} className={isOpen ? "rotate-180" : ""} />
               </button>
 
               {isOpen && (
-                <div className="bi-slicer-dropdown-menu">
+                <div className={`bi-slicer-dropdown-menu ${alignRight ? "align-right" : ""}`}>
                   <div className="bi-dropdown-head">
-                    <span>Filter {dim.original_name || dim.name}</span>
+                    <span className="bi-dropdown-title">
+                      Filter {dim.original_name || dim.name}
+                      {activeCount > 0 && <small> ({activeCount} active)</small>}
+                    </span>
                     <button
                       type="button"
                       className="bi-clear-dim-btn"
-                      onClick={() => onFilterChange(activeFilters.filter(f => f.column !== dim.name))}
+                      onClick={() => clearDimFilter(dim.name)}
+                      disabled={activeCount === 0}
                     >
                       Reset
                     </button>
                   </div>
-                  <div className="bi-dropdown-list">
-                    {sampleVals.slice(0, 10).map((val, idx) => {
-                      const selected = isCategorySelected(dim.name, val);
-                      return (
-                        <div
-                          key={idx}
-                          className={`bi-dropdown-item ${selected ? "selected" : ""}`}
-                          onClick={() => toggleCategoryFilter(dim.name, val)}
+
+                  {/* Search box within dropdown */}
+                  {allVals.length > 5 && (
+                    <div className="bi-dropdown-search-row">
+                      <Search size={11} className="bi-search-icon" />
+                      <input
+                        type="text"
+                        className="bi-dropdown-search-input"
+                        placeholder="Search values..."
+                        value={searchQuery}
+                        onChange={e => setSearchQueries({ ...searchQueries, [dim.name]: e.target.value })}
+                        autoFocus
+                      />
+                      {searchQuery && (
+                        <button
+                          type="button"
+                          className="bi-search-clear"
+                          onClick={() => setSearchQueries({ ...searchQueries, [dim.name]: "" })}
                         >
-                          <div className={`bi-checkbox ${selected ? "checked" : ""}`}>
-                            {selected && <Check size={11} />}
+                          <X size={10} />
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Quick Select All / Clear action bar */}
+                  <div className="bi-dropdown-quick-bar">
+                    <button
+                      type="button"
+                      className="bi-quick-btn"
+                      onClick={() => selectAllValues(dim.name, allVals)}
+                    >
+                      Select All
+                    </button>
+                    <span className="bi-quick-sep">·</span>
+                    <button
+                      type="button"
+                      className="bi-quick-btn"
+                      onClick={() => clearDimFilter(dim.name)}
+                    >
+                      Deselect All
+                    </button>
+                  </div>
+
+                  {/* Checkbox List */}
+                  <div className="bi-dropdown-list">
+                    {filteredVals.length > 0 ? (
+                      filteredVals.map((val, idx) => {
+                        const selected = isCategorySelected(dim.name, val);
+                        return (
+                          <div
+                            key={idx}
+                            className={`bi-dropdown-item ${selected ? "selected" : ""}`}
+                            onClick={() => toggleCategoryFilter(dim.name, val)}
+                          >
+                            <div className={`bi-checkbox ${selected ? "checked" : ""}`}>
+                              {selected && <Check size={11} />}
+                            </div>
+                            <span className="bi-item-text" title={String(val)}>{val}</span>
                           </div>
-                          <span className="bi-item-text">{val}</span>
-                        </div>
-                      );
-                    })}
+                        );
+                      })
+                    ) : (
+                      <div className="bi-dropdown-empty">No matching values</div>
+                    )}
+                  </div>
+
+                  {/* Footer with summary */}
+                  <div className="bi-dropdown-footer">
+                    <span>{filteredVals.length} available</span>
+                    {activeCount > 0 && <span className="bi-selected-note">{activeCount} selected</span>}
                   </div>
                 </div>
               )}

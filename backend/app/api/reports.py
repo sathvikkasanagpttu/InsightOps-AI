@@ -61,7 +61,10 @@ def list_reports(
         # User's accessible workspaces
         from ..db.models import WorkspaceMember
         ws_ids = [m.workspace_id for m in db.query(WorkspaceMember).filter(WorkspaceMember.user_id == user.id).all()]
-        query = query.filter(Report.workspace_id.isin(ws_ids))
+        if ws_ids:
+            query = query.filter(Report.workspace_id.in_(ws_ids))
+        else:
+            return []
 
     reports = query.order_by(Report.updated_at.desc()).all()
     results = []

@@ -52,7 +52,8 @@ export default function PowerBIDashboard({
       width: chart.width || (["kpi_card", "gauge"].includes(chart.kind) ? 4 : idx === 0 ? 8 : 6),
       kind: chart.kind || "column",
       title: chart.title || `Visual ${idx + 1}`,
-      data: chart.data || []
+      data: chart.data || [],
+      initialData: chart.data || []
     }));
 
     // Split into 3 default pages
@@ -82,6 +83,78 @@ export default function PowerBIDashboard({
     ]);
     setActivePageId("page-1");
   }, [baseCharts, datasetId]);
+
+  // Dynamically update visuals when slicer filters or cross-filters change
+  useEffect(() => {
+    if (!datasetId || !activePage.visuals || activePage.visuals.length === 0) return;
+
+    if (activeFilters.length === 0 && activeCrossFilter === null) {
+      setPages(prev =>
+        prev.map(p => {
+          if (p.id !== activePageId) return p;
+          const restored = p.visuals.map(v => ({
+            ...v,
+            data: v.initialData || v.data
+          }));
+          return { ...p, visuals: restored };
+        })
+      );
+      return;
+    }
+
+    let cancelled = false;
+
+    async function applyFiltersToPage() {
+      try {
+        const updated = await Promise.all(
+          activePage.visuals.map(async visual => {
+            const xCol = visual.source_columns?.[0] || visual.x_key;
+            const yCol = visual.source_columns?.[1] || visual.y_key;
+            if (!xCol) return visual;
+
+            try {
+              const res = await api(`/api/dataset/visualize/query?dataset_id=${encodeURIComponent(datasetId)}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  chart_type: visual.kind || visual.chart_type || "column",
+                  x_col: xCol,
+                  y_col: yCol,
+                  date_hierarchy: visual.date_hierarchy || "auto",
+                  filters: activeFilters,
+                  cross_filter: activeCrossFilter
+                })
+              });
+              if (res && res.data) {
+                return {
+                  ...visual,
+                  data: res.data,
+                  kpi_summary: res.kpi_summary || visual.kpi_summary
+                };
+              }
+            } catch (err) {
+              console.warn("Visual query update failed:", err);
+            }
+            return visual;
+          })
+        );
+
+        if (!cancelled) {
+          setPages(prev =>
+            prev.map(p => (p.id === activePageId ? { ...p, visuals: updated } : p))
+          );
+        }
+      } catch (err) {
+        console.error("Filter update failed:", err);
+      }
+    }
+
+    applyFiltersToPage();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeFilters, activeCrossFilter, activePageId, datasetId]);
 
   // Current active page
   const activePage = pages.find(p => p.id === activePageId) || pages[0] || { visuals: [] };

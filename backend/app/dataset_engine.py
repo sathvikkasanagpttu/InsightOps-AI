@@ -30,7 +30,7 @@ from .services.anomaly_engine import detect_anomalies
 from .services.forecast_engine import generate_forecast
 
 
-def _group_counts(frame: pd.DataFrame, column: str, limit: int = 10) -> list[dict]:
+def _group_counts(frame: pd.DataFrame, column: str, limit: int = 50) -> list[dict]:
     values = frame[column].dropna().astype(str).value_counts().head(limit)
     return [{"label": value, "value": int(count)} for value, count in values.items()]
 

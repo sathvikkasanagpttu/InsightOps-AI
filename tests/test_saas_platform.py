@@ -174,6 +174,11 @@ def test_reports_crud_duplicate_and_share(client):
     assert get_rep["is_shared"] is True
     assert len(get_rep["pages"]) == 2
 
+    # List reports across all accessible workspaces (verifying in_ filter)
+    all_reports = client.get("/api/reports", headers=auth_header).json()
+    assert isinstance(all_reports, list)
+    assert any(r["id"] == rep_id for r in all_reports)
+
 
 def test_alerts_center_and_notifications(client):
     login_res = client.post("/api/auth/login", json={
