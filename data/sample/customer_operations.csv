@@ -1,0 +1,14 @@
+Created,Product_ID,Source,Mobile,EMAIL,Sales_Agent,region,Delivery_Mode,Status
+2025-01-02,P-1001,Website,5550101001,lead01@example.test,Agent-01,South,Direct,Open
+2025-01-04,P-1002,Referral,5550101002,lead02@example.test,Agent-02,North,Courier,Won
+2025-01-08,P-1003,Call,5550101003,lead03@example.test,Agent-01,East,Direct,In Progress
+2025-01-12,P-1001,Website,5550101004,lead04@example.test,Agent-03,South,Partner,Won
+2025-02-01,P-1004,Event,5550101005,lead05@example.test,Agent-02,West,Courier,Open
+2025-02-03,P-1005,Referral,5550101006,lead06@example.test,Agent-04,South,Direct,Potential
+2025-02-11,P-1006,Call,5550101007,bad-email,Agent-01,East,Direct,Not Responding
+2025-02-14,P-1007,Website,123,lead08@example.test,Agent-03,North,Courier,Won
+2025-03-02,P-1008,Event,,lead09@example.test,Agent-02,,Partner,Open
+2025-03-05,,Referral,5550101010,lead10@example.test,,West,Direct,In Progress
+2025-03-07,P-1009,,5550101011,lead11@example.test,Agent-04,South,Direct,Won
+not-a-date,P-1010,Call,5550101012,lead12@example.test,Agent-01,East,Courier,Junk Lead
+2025-03-05,,Referral,5550101010,lead10@example.test,,West,Direct,In Progress

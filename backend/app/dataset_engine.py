@@ -134,7 +134,9 @@ def classify_column(name: str, series: pd.Series) -> dict:
 
 def _mask_value(value: object, semantic: str) -> str:
     text = str(value)
-    if semantic == "email" and "@" in text:
+    if semantic == "email":
+        if "@" not in text:
+            return f"{text[:1]}***"
         local, domain = text.split("@", 1)
         return f"{local[:2]}{'*' * max(2, len(local) - 2)}@{domain}"
     if semantic == "phone":
@@ -171,6 +173,12 @@ def _clean_frame(raw_frame: pd.DataFrame) -> tuple[pd.DataFrame, list[dict], dic
             values = frame[column].astype("string").str.replace(r"[, $₹€£%]", "", regex=True).str.replace(r"^\((.*)\)$", r"-\1", regex=True)
             frame[column] = pd.to_numeric(values, errors="coerce")
             invalid_by_column[column] = int((before & frame[column].isna()).sum())
+        elif semantic == "email":
+            invalid_by_column[column] = int((before & ~frame[column].astype("string").str.match(EMAIL_PATTERN, na=False)).sum())
+        elif semantic == "phone":
+            digits = frame[column].astype("string").str.replace(r"\D", "", regex=True)
+            valid_phone = digits.str.len().between(7, 15)
+            invalid_by_column[column] = int((before & ~valid_phone.fillna(False)).sum())
         else:
             invalid_by_column[column] = 0
         detected = classify_column(original, frame[column])
@@ -276,16 +284,23 @@ def analyze_dataset(raw_frame: pd.DataFrame, filename: str) -> tuple[pd.DataFram
             kpis.append({"label": "Statuses", "value": int(frame[column["name"]].nunique(dropna=True)), "format": "count", "source_columns": [column["name"]]})
         if column["semantic_type"] == "delivery_mode":
             kpis.append({"label": "Delivery Modes", "value": int(frame[column["name"]].nunique(dropna=True)), "format": "count", "source_columns": [column["name"]]})
-    customer_columns = [column["name"] for column in schema if column["semantic_type"] in {"email", "phone", "customer"}]
+    customer_columns = [column["name"] for column in schema if column["semantic_type"] in {"email", "phone", "customer", "identifier"} and any(token in column["name"] for token in ("email", "phone", "mobile", "customer", "client", "contact"))]
     if customer_columns:
         kpis.append({"label": "Unique Contacts", "value": int(frame[customer_columns[0]].nunique(dropna=True)), "format": "count", "source_columns": customer_columns[:1]})
+    orders_column = next((column["name"] for column in schema if column["semantic_type"] == "numeric" and any(token in column["name"] for token in ("order", "quantity", "units"))), None)
+    customers_column = next((column["name"] for column in schema if column["semantic_type"] == "numeric" and "customer" in column["name"]), None)
+    if orders_column:
+        kpis.append({"label": "Total Orders", "value": int(frame[orders_column].sum()), "format": "count", "source_columns": [orders_column]})
+    if customers_column:
+        kpis.append({"label": "Total Customers", "value": int(frame[customers_column].sum()), "format": "count", "source_columns": [customers_column]})
     if revenue_column:
         total_revenue = float(frame[revenue_column].sum())
         kpis.append({"label": "Total Revenue", "value": round(total_revenue, 2), "format": "currency", "source_columns": [revenue_column]})
-        if _semantic_column(schema, "customer"):
-            orders_column = next((column["name"] for column in schema if column["semantic_type"] == "numeric" and "order" in column["name"]), None)
-            if orders_column and frame[orders_column].sum():
-                kpis.append({"label": "Average Order Value", "value": round(total_revenue / float(frame[orders_column].sum()), 2), "format": "currency", "source_columns": [revenue_column, orders_column]})
+        if orders_column and frame[orders_column].sum():
+            kpis.append({"label": "Average Order Value", "value": round(total_revenue / float(frame[orders_column].sum()), 2), "format": "currency", "source_columns": [revenue_column, orders_column]})
+        if date_column and len(record_trend) > 1 and record_trend[-2]["value"]:
+            growth = (record_trend[-1]["value"] / record_trend[-2]["value"] - 1) * 100
+            kpis.append({"label": "Revenue Growth", "value": round(growth, 2), "format": "percent", "source_columns": [date_column, revenue_column]})
     if profit_column:
         profit = float(frame[profit_column].sum())
         kpis.append({"label": "Total Profit", "value": round(profit, 2), "format": "currency", "source_columns": [profit_column]})
@@ -378,7 +393,7 @@ def _classify_dataset(schema: list[dict]) -> tuple[str, float, list[str]]:
         return "Sales / Revenue", 0.88, entities
     if "person" in semantics and any("department" in name or "salary" in name for name in names):
         return "HR / Workforce", 0.86, entities
-    if any("stock" in name or "warehouse" in name for name in names):
+    if any(any(token in name for token in ("stock", "inventory", "sku", "quantity")) for name in names):
         return "Inventory / Operations", 0.84, entities
     return "General Dataset", 0.68, entities
 
@@ -432,6 +447,10 @@ def generate_answer(frame: pd.DataFrame, report: dict, question: str) -> dict:
             percent = round(target["value"] / max(report["rows"], 1) * 100, 1)
             answer = f"{target['label']} accounts for {percent}% of records ({target['value']:,} of {report['rows']:,})."
             calculation = f"COUNT({column}={target['label']}) / COUNT(records) × 100"
+        elif "distribution" in query or "breakdown" in query:
+            breakdown = ", ".join(f"{item['label']}: {item['value']:,}" for item in values)
+            answer = f"Records by {metadata['original_name']}: {breakdown}."
+            calculation = f"COUNT(records) grouped by {column}"
         else:
             answer = f"{values[0]['label']} has the highest count in {metadata['original_name']} ({values[0]['value']:,})."
             calculation = f"COUNT(records) grouped by {column}, sorted descending"

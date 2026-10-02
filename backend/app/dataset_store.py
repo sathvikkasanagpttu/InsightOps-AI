@@ -72,7 +72,7 @@ class DatasetStore:
     def _read_frame(content: bytes, extension: str) -> pd.DataFrame:
         try:
             if extension == ".csv":
-                return pd.read_csv(BytesIO(content), sep=None, engine="python", encoding="utf-8-sig")
+                return pd.read_csv(BytesIO(content), sep=None, engine="python", encoding="utf-8-sig", dtype="string")
             return pd.read_excel(BytesIO(content), engine="openpyxl" if extension == ".xlsx" else "xlrd")
         except Exception as exc:
             raise ValueError(f"Could not read the uploaded {extension[1:].upper()} file: {exc}") from exc

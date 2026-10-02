@@ -46,6 +46,8 @@ def health():
 @app.post("/api/dataset", include_in_schema=False)
 async def upload_dataset(file: UploadFile = File(...)):
     content = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Files must be 50 MB or smaller.")
     try:
         return store.upload(file.filename, content)
     except ValueError as exc:
@@ -113,6 +115,8 @@ def export_clean_dataset(dataset_id: str = Query(default="demo-sales")):
 @app.post("/api/profile")
 async def profile_upload(file: UploadFile = File(...)):
     content = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Files must be 50 MB or smaller.")
     try:
         extension = Path(file.filename or "dataset.csv").suffix.lower()
         frame = DatasetStore._read_frame(content, extension)
