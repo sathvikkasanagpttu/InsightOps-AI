@@ -5,12 +5,16 @@ from collections.abc import Iterable
 import numpy as np
 import pandas as pd
 
+from .services.kpi_engine import generate_kpis
+
 COLUMN_ALIASES = {
     "date": {"date", "created", "created_at", "timestamp", "order_date", "transaction_date", "sale_date", "sales_date", "invoice_date"},
     "revenue": {"revenue", "sales", "sale_amount", "sales_amount", "total_sales", "total_revenue", "net_sales", "amount", "total", "price", "value"},
     "customer": {"customer", "client", "contact"},
+        "customer": {"customer", "customers", "client", "contact", "patient"},
     "region": {"region", "area", "zone", "territory", "location", "state", "city", "country"},
     "category": {"category", "type", "product_category", "segment", "product_type", "item_category"},
+        "category": {"category", "type", "product", "department", "gender", "condition", "treatment", "product_category", "segment", "product_type", "item_category"},
     "status": {"status", "order_status", "lead_status"},
     "identifier": {"id", "product_id", "order_id", "record_id", "lead_id", "employee_id", "customer_id", "client_id", "contact_id"},
     "email": {"email", "email_address", "e_mail"},
@@ -19,7 +23,8 @@ COLUMN_ALIASES = {
     "source": {"source", "channel", "lead_source", "acquisition_source"},
     "delivery_mode": {"delivery_mode", "delivery", "shipping_method", "fulfillment_method"},
     "percentage": {"percentage", "percent", "rate", "margin", "conversion_rate"},
-    "currency": {"profit", "net_profit", "gross_profit", "earnings", "salary", "cost", "inventory_value"},
+    "currency": {"profit", "net_profit", "gross_profit", "earnings", "salary", "cost", "expense", "expenses", "income", "cash_flow", "inventory_value"},
+        "currency": {"profit", "net_profit", "gross_profit", "earnings", "salary", "cost", "inventory_value"},
     "boolean": {"is_active", "active", "enabled", "verified", "delivered"},
 }
 
@@ -37,6 +42,8 @@ def normalize_name(value: object) -> str:
 
 def _name_semantic(name: str) -> tuple[str | None, float]:
     normalized = normalize_name(name)
+    if normalized in {"customers", "customer_count", "number_of_customers", "num_customers", "orders", "order_count", "quantity", "units", "count", "age", "experience", "tenure", "score", "population", "headcount"}:
+        return "numeric", 0.84
     for semantic in ("email", "phone", "date", "revenue", "customer", "region", "category", "status", "identifier", "person", "source", "delivery_mode", "percentage", "currency", "boolean"):
         aliases = COLUMN_ALIASES[semantic]
         if normalized in aliases:
@@ -47,10 +54,8 @@ def _name_semantic(name: str) -> tuple[str | None, float]:
         return "phone", 0.9
     if any(token in normalized for token in ("date", "time", "created")):
         return "date", 0.88
-    if any(token in normalized for token in ("revenue", "sales", "amount", "price", "profit", "cost", "salary", "value")):
+    if any(token in normalized for token in ("revenue", "sales", "amount", "price", "profit", "cost", "salary", "value", "income", "expense", "cash_flow")):
         return "currency", 0.84
-    if normalized in {"customers", "customer_count", "number_of_customers", "num_customers", "orders", "order_count", "quantity", "units", "count"}:
-        return "numeric", 0.84
     if "percent" in normalized or "rate" in normalized or "margin" in normalized:
         return "percentage", 0.82
     if normalized.endswith("_id") or normalized == "id" or normalized.endswith("_key"):
@@ -156,9 +161,20 @@ def _clean_frame(raw_frame: pd.DataFrame) -> tuple[pd.DataFrame, list[dict], dic
         normalized_names.append(base if seen[base] == 1 else f"{base}_{seen[base]}")
     frame.columns = normalized_names
 
+    trimmed_by_column = {}
+    case_inconsistencies = []
     for column in frame.select_dtypes(include=["object", "string"]).columns:
+        original_values = frame[column].copy()
+        trimmed_by_column[column] = int(original_values.map(lambda value: isinstance(value, str) and value != value.strip()).sum())
         cleaned = frame[column].map(lambda value: value.strip() if isinstance(value, str) else value)
         frame[column] = cleaned.replace({"": pd.NA, "n/a": pd.NA, "N/A": pd.NA, "null": pd.NA, "NULL": pd.NA, "none": pd.NA})
+        variants = {}
+        for value in frame[column].dropna().astype(str).unique():
+            variants.setdefault(value.casefold(), set()).add(value)
+        for normalized, spellings in variants.items():
+            if len(spellings) > 1:
+                case_inconsistencies.append({"column": column, "normalized_value": normalized,
+                                             "variants": sorted(spellings)[:10]})
 
     schema = []
     invalid_by_column = {}
@@ -186,8 +202,42 @@ def _clean_frame(raw_frame: pd.DataFrame) -> tuple[pd.DataFrame, list[dict], dic
                          "sample_values": [_mask_value(value, detected["semantic_type"]) for value in frame[column].dropna().head(3).tolist()]})
         schema.append(detected)
     duplicate_rows = int(frame.duplicated().sum())
+    duplicate_ids = []
+    empty_columns = []
+    constant_columns = []
+    high_cardinality_columns = []
+    for column in schema:
+        name = column["name"]
+        series = frame[name]
+        if series.isna().all():
+            empty_columns.append(name)
+        elif series.nunique(dropna=True) == 1:
+            constant_columns.append(name)
+        if len(frame) > 0 and column["unique_count"] > 30 and column["unique_count"] / len(frame) >= 0.8:
+            high_cardinality_columns.append(name)
+        if column["semantic_type"] == "identifier":
+            repeated = int(series.dropna().duplicated().sum())
+            if repeated:
+                duplicate_ids.append({"column": name, "count": repeated})
+
+    actions = ["Normalized column names", "Trimmed surrounding whitespace",
+               "Converted detected dates and numeric values", "Preserved the raw upload"]
+    if duplicate_rows:
+        actions.append(f"Flagged {duplicate_rows} exact duplicate rows without removing them")
+    if any(trimmed_by_column.values()):
+        actions.append("Trimmed whitespace in populated cells")
     cleaning = {
-        "actions": ["Normalized column names", "Trimmed surrounding whitespace", "Converted detected dates and numeric values", "Preserved the raw upload"],
+        "actions": actions,
+        "before": {"rows": int(len(raw_frame)), "columns": int(len(raw_frame.columns)),
+                   "missing_values": int(raw_frame.isna().sum().sum())},
+        "after": {"rows": int(len(frame)), "columns": int(len(frame.columns)),
+                  "missing_values": int(frame.isna().sum().sum())},
+        "whitespace_trimmed_by_column": trimmed_by_column,
+        "case_inconsistencies": case_inconsistencies,
+        "duplicate_ids_by_column": duplicate_ids,
+        "empty_columns": empty_columns,
+        "constant_columns": constant_columns,
+        "high_cardinality_columns": high_cardinality_columns,
         "duplicate_rows_detected": duplicate_rows,
         "invalid_values_by_column": invalid_by_column,
     }
@@ -254,10 +304,21 @@ def _generate_quality(frame: pd.DataFrame, schema: list[dict], cleaning: dict) -
 def analyze_dataset(raw_frame: pd.DataFrame, filename: str) -> tuple[pd.DataFrame, dict]:
     if raw_frame.empty or len(raw_frame.columns) == 0:
         raise ValueError("The uploaded dataset has no rows or columns.")
-    frame, schema, cleaning = _clean_frame(raw_frame)
+    cleaned_frame, schema, cleaning = _clean_frame(raw_frame)
+    frame = cleaned_frame.copy()
     quality = _generate_quality(frame, schema, cleaning)
     pii_columns = [column["name"] for column in schema if column["semantic_type"] in PII_SEMANTICS]
-    revenue_column = next((column["name"] for column in schema if column["semantic_type"] == "currency" and any(token in column["name"] for token in ("revenue", "sales", "amount", "total", "price", "value"))), None)
+    revenue_column = next((column["name"] for column in schema if column["semantic_type"] == "currency" and any(token in column["name"] for token in ("revenue", "sales", "amount", "total", "price", "value", "income")) and "price" not in column["name"]), None)
+    revenue_source_columns = [revenue_column] if revenue_column else []
+    derived_revenue = None
+    if not revenue_column:
+        price_column = next((column["name"] for column in schema if column["semantic_type"] == "currency" and "price" in column["name"]), None)
+        quantity_column = next((column["name"] for column in schema if column["semantic_type"] == "numeric" and any(token in column["name"] for token in ("quantity", "units"))), None)
+        if price_column and quantity_column:
+            revenue_column = "__derived_revenue"
+            revenue_source_columns = [price_column, quantity_column]
+            frame[revenue_column] = frame[price_column] * frame[quantity_column]
+            derived_revenue = {"column": revenue_column, "formula": f"{price_column} × {quantity_column}", "source_columns": revenue_source_columns}
     profit_column = next((column["name"] for column in schema if column["semantic_type"] == "currency" and any(token in column["name"] for token in ("profit", "earning"))), None)
     dimensions = []
     charts = []
@@ -267,52 +328,13 @@ def analyze_dataset(raw_frame: pd.DataFrame, filename: str) -> tuple[pd.DataFram
             dimensions.append({"column": column["name"], "semantic_type": column["semantic_type"], "unique_count": column["unique_count"], "values": points})
             chart_points = _group_sums(frame, column["name"], revenue_column) if revenue_column else points
             measure = "revenue" if revenue_column else "records"
-            charts.append({"kind": "bar", "title": f"{'Revenue' if revenue_column else 'Records'} by {column['original_name']}", "x_key": "label", "y_key": "value", "y_label": measure, "data": chart_points, "source_columns": [column["name"]] + ([revenue_column] if revenue_column else [])})
+            charts.append({"kind": "bar", "title": f"{'Revenue' if revenue_column else 'Records'} by {column['original_name']}", "x_key": "label", "y_key": "value", "y_label": measure, "data": chart_points, "source_columns": [column["name"]] + revenue_source_columns})
 
     date_column, record_trend = _time_series(frame, schema, revenue_column)
     if record_trend:
-        charts.append({"kind": "line", "title": f"{'Revenue' if revenue_column else 'Record creation'} trend", "x_key": "period", "y_key": "value", "y_label": "revenue" if revenue_column else "records", "data": record_trend, "source_columns": [date_column] + ([revenue_column] if revenue_column else [])})
+        charts.append({"kind": "line", "title": f"{'Revenue' if revenue_column else 'Record creation'} trend", "x_key": "period", "y_key": "value", "y_label": "revenue" if revenue_column else "records", "data": record_trend, "source_columns": [date_column] + revenue_source_columns})
 
-    kpis = [
-        {"label": "Total Records", "value": int(len(frame)), "format": "count", "source_columns": []},
-        {"label": "Columns", "value": int(len(frame.columns)), "format": "count", "source_columns": []},
-        {"label": "Data Quality", "value": quality["overall_score"], "format": "percent", "source_columns": []},
-        {"label": "Missing Values", "value": quality["missing_values"], "format": "count", "source_columns": []},
-        {"label": "Duplicate Records", "value": quality["duplicate_rows"], "format": "count", "source_columns": []},
-    ]
-    for column in schema:
-        if column["semantic_type"] == "identifier" and any(token in column["name"] for token in ("product", "item")):
-            kpis.append({"label": "Unique Products", "value": int(frame[column["name"]].nunique(dropna=True)), "format": "count", "source_columns": [column["name"]]})
-        if column["semantic_type"] == "person":
-            kpis.append({"label": f"Unique {column['original_name']}", "value": int(frame[column["name"]].nunique(dropna=True)), "format": "count", "source_columns": [column["name"]]})
-        if column["semantic_type"] in {"region", "location"}:
-            kpis.append({"label": "Regions", "value": int(frame[column["name"]].nunique(dropna=True)), "format": "count", "source_columns": [column["name"]]})
-        if column["semantic_type"] == "status":
-            kpis.append({"label": "Statuses", "value": int(frame[column["name"]].nunique(dropna=True)), "format": "count", "source_columns": [column["name"]]})
-        if column["semantic_type"] == "delivery_mode":
-            kpis.append({"label": "Delivery Modes", "value": int(frame[column["name"]].nunique(dropna=True)), "format": "count", "source_columns": [column["name"]]})
-    customer_columns = [column["name"] for column in schema if column["semantic_type"] in {"email", "phone", "customer", "identifier"} and any(token in column["name"] for token in ("email", "phone", "mobile", "customer", "client", "contact"))]
-    if customer_columns:
-        kpis.append({"label": "Unique Contacts", "value": int(frame[customer_columns[0]].nunique(dropna=True)), "format": "count", "source_columns": customer_columns[:1]})
-    orders_column = next((column["name"] for column in schema if column["semantic_type"] == "numeric" and any(token in column["name"] for token in ("order", "quantity", "units"))), None)
-    customers_column = next((column["name"] for column in schema if column["semantic_type"] == "numeric" and "customer" in column["name"]), None)
-    if orders_column:
-        kpis.append({"label": "Total Orders", "value": int(frame[orders_column].sum()), "format": "count", "source_columns": [orders_column]})
-    if customers_column:
-        kpis.append({"label": "Total Customers", "value": int(frame[customers_column].sum()), "format": "count", "source_columns": [customers_column]})
-    if revenue_column:
-        total_revenue = float(frame[revenue_column].sum())
-        kpis.append({"label": "Total Revenue", "value": round(total_revenue, 2), "format": "currency", "source_columns": [revenue_column]})
-        if orders_column and frame[orders_column].sum():
-            kpis.append({"label": "Average Order Value", "value": round(total_revenue / float(frame[orders_column].sum()), 2), "format": "currency", "source_columns": [revenue_column, orders_column]})
-        if date_column and len(record_trend) > 1 and record_trend[-2]["value"]:
-            growth = (record_trend[-1]["value"] / record_trend[-2]["value"] - 1) * 100
-            kpis.append({"label": "Revenue Growth", "value": round(growth, 2), "format": "percent", "source_columns": [date_column, revenue_column]})
-    if profit_column:
-        profit = float(frame[profit_column].sum())
-        kpis.append({"label": "Total Profit", "value": round(profit, 2), "format": "currency", "source_columns": [profit_column]})
-        if revenue_column and frame[revenue_column].sum():
-            kpis.append({"label": "Profit Margin", "value": round(profit / float(frame[revenue_column].sum()) * 100, 2), "format": "percent", "source_columns": [profit_column, revenue_column]})
+    kpis = generate_kpis(frame, schema, quality, revenue_column, profit_column, date_column, record_trend, revenue_source_columns)
 
     numeric_statistics = []
     outlier_alerts = []
@@ -323,9 +345,12 @@ def analyze_dataset(raw_frame: pd.DataFrame, filename: str) -> tuple[pd.DataFram
         values = frame[name].dropna()
         if values.empty:
             continue
+        quartiles = values.quantile([0.25, 0.5, 0.75])
         numeric_statistics.append({"column": name, "count": int(values.size), "mean": round(float(values.mean()), 3),
-                                   "median": round(float(values.median()), 3), "min": float(values.min()), "max": float(values.max())})
-        q1, q3 = values.quantile([0.25, 0.75])
+                                   "median": round(float(quartiles.loc[0.5]), 3), "std": round(float(values.std()), 3) if values.size > 1 else 0.0,
+                                   "min": float(values.min()), "q1": round(float(quartiles.loc[0.25]), 3),
+                                   "q3": round(float(quartiles.loc[0.75]), 3), "max": float(values.max())})
+        q1, q3 = quartiles.loc[0.25], quartiles.loc[0.75]
         iqr = q3 - q1
         if iqr > 0:
             outlier_count = int(((values < q1 - 1.5 * iqr) | (values > q3 + 1.5 * iqr)).sum())
@@ -370,8 +395,8 @@ def analyze_dataset(raw_frame: pd.DataFrame, filename: str) -> tuple[pd.DataFram
         "dataset_type": dataset_type,
         "dataset_type_confidence": type_confidence,
         "detected_entities": entities,
-        "rows": int(len(frame)),
-        "column_count": int(len(frame.columns)),
+        "rows": int(len(cleaned_frame)),
+        "column_count": int(len(schema)),
         "analysis_mode": "sales" if revenue_column else "universal",
         "schema": schema,
         "columns": [{"name": item["name"], "original_name": item["original_name"], "dtype": item["data_type"], "missing_values": quality["missing_by_column"][next((i for i, m in enumerate(quality["missing_by_column"]) if m["column"] == item["name"]), 0)]["count"] if any(m["column"] == item["name"] for m in quality["missing_by_column"]) else 0, "unique_values": item["unique_count"], "semantic_type": item["semantic_type"], "confidence": item["confidence"], "null_percentage": item["null_percentage"], "sample_values": item["sample_values"]} for item in schema],
@@ -380,6 +405,8 @@ def analyze_dataset(raw_frame: pd.DataFrame, filename: str) -> tuple[pd.DataFram
         "missing_values": quality["missing_values"],
         "duplicates": quality["duplicate_rows"],
         "cleaning_report": cleaning,
+        "derived_metrics": [derived_revenue] if derived_revenue else [],
+        "revenue_column": revenue_column,
         "sensitive_columns": [{"name": item["name"], "semantic_type": item["semantic_type"], "message": "Potentially identifiable information; values are masked in analysis."} for item in schema if item["semantic_type"] in PII_SEMANTICS],
         "dimensions": dimensions,
         "date_column": date_column,
@@ -393,23 +420,34 @@ def analyze_dataset(raw_frame: pd.DataFrame, filename: str) -> tuple[pd.DataFram
         "alerts": alerts,
         "source_filename": filename,
     }
-    return frame, report
+    return cleaned_frame, report
 
 
 def _classify_dataset(schema: list[dict]) -> tuple[str, float, list[str]]:
     semantics = {item["semantic_type"] for item in schema}
     names = {item["name"] for item in schema}
+    original_names = {item["original_name"].lower() for item in schema}
     entities = []
     for semantic, label in (("customer", "Customers / Contacts"), ("identifier", "Product / Record IDs"), ("person", "Sales Agents / People"), ("region", "Regions / Locations"), ("delivery_mode", "Delivery Modes"), ("status", "Statuses"), ("source", "Sources / Channels"), ("datetime", "Creation Date"), ("date", "Date")):
         if semantic in semantics:
             entities.append(label)
     if {"status", "region"}.issubset(semantics) and ({"source"} & semantics or {"person"} & semantics):
         return "Customer / Lead / Sales Operations", 0.92, entities
+    if any("employee" in name for name in names) and ("department" in names or "salary" in names):
+        entities.extend(label for label in ("Employees", "Departments", "Salary") if label not in entities)
+        return "HR / Workforce", 0.9, entities
+    if any("patient" in name for name in names) and any(token in " ".join(names) for token in ("treatment", "outcome", "condition")):
+        entities.extend(label for label in ("Patients", "Treatments", "Outcomes") if label not in entities)
+        return "Healthcare", 0.88, entities
+    if any("order" in name for name in names) and any("customer" in name for name in names) and any("product" in name for name in names):
+        entities.extend(label for label in ("Orders", "Customers", "Products") if label not in entities)
+        return "E-commerce", 0.9, entities
+    if any(token in " ".join(names) for token in ("income", "expense", "cash_flow")):
+        entities.extend(label for label in ("Income", "Expenses", "Cash Flow") if label not in entities)
+        return "Finance", 0.88, entities
     if "currency" in semantics and any(token in " ".join(names) for token in ("sales", "revenue", "amount")):
         return "Sales / Revenue", 0.88, entities
-    if "person" in semantics and any("department" in name or "salary" in name for name in names):
-        return "HR / Workforce", 0.86, entities
-    if any(any(token in name for token in ("stock", "inventory", "sku", "quantity")) for name in names):
+    if any(any(token in name for token in ("stock", "inventory", "sku", "warehouse")) for name in names):
         return "Inventory / Operations", 0.84, entities
     return "General Dataset", 0.68, entities
 

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from .dataset_engine import analyze_dataset
+from .dataset_engine import PII_SEMANTICS, _mask_value, analyze_dataset, classify_column
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls"}
@@ -19,14 +19,14 @@ class DatasetStore:
         self.demo_path = demo_path.resolve()
         self.root.mkdir(parents=True, exist_ok=True)
 
-    def upload(self, filename: str | None, content: bytes) -> dict:
+    def upload(self, filename: str | None, content: bytes, sheet_name: str | None = None) -> dict:
         if len(content) > MAX_UPLOAD_BYTES:
             raise ValueError("Files must be 50 MB or smaller.")
         safe_name = self._safe_filename(filename)
         extension = Path(safe_name).suffix.lower()
         if extension not in ALLOWED_EXTENSIONS:
             raise ValueError("Upload a CSV, XLSX or XLS file.")
-        frame = self._read_frame(content, extension)
+        frame = self._read_frame(content, extension, sheet_name)
         cleaned_frame, report = analyze_dataset(frame, safe_name)
         dataset_id = uuid.uuid4().hex
         report["dataset_id"] = dataset_id
@@ -39,6 +39,7 @@ class DatasetStore:
             "filename": safe_name,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "file_size": len(content),
+            "sheet_name": sheet_name,
             "report": report,
         }
         (folder / "profile.json").write_text(json.dumps(metadata, ensure_ascii=True), encoding="utf-8")
@@ -68,12 +69,55 @@ class DatasetStore:
                 "frame": frame, "report": report, "cleaned_path": clean_path,
                 "raw_path": raw_path}
 
+    def preview(self, filename: str | None, content: bytes, sheet_name: str | None = None) -> dict:
+        if len(content) > MAX_UPLOAD_BYTES:
+            raise ValueError("Files must be 50 MB or smaller.")
+        safe_name = self._safe_filename(filename)
+        extension = Path(safe_name).suffix.lower()
+        if extension not in ALLOWED_EXTENSIONS:
+            raise ValueError("Upload a CSV, XLSX or XLS file.")
+        sheets = []
+        selected_sheet = sheet_name
+        if extension in {".xlsx", ".xls"}:
+            engine = "openpyxl" if extension == ".xlsx" else "xlrd"
+            try:
+                sheets = pd.ExcelFile(BytesIO(content), engine=engine).sheet_names
+            except Exception as exc:
+                raise ValueError(f"Could not read the uploaded workbook: {exc}") from exc
+            if not sheets:
+                raise ValueError("The workbook does not contain any sheets.")
+            selected_sheet = selected_sheet or sheets[0]
+            if selected_sheet not in sheets:
+                raise ValueError("Select a sheet name present in the uploaded workbook.")
+        frame = self._read_frame(content, extension, selected_sheet, nrows=12)
+        sample_schema = [classify_column(str(column), frame[column]) for column in frame.columns]
+        preview_rows = []
+        for _, row in frame.head(10).iterrows():
+            preview_rows.append({
+                str(column): (_mask_value(row[column], schema["semantic_type"])
+                              if schema["semantic_type"] in PII_SEMANTICS else str(row[column])[:120])
+                for column, schema in zip(frame.columns, sample_schema)
+            })
+        return {"filename": safe_name, "file_size": len(content), "sheet_names": sheets,
+                "selected_sheet": selected_sheet, "columns": sample_schema,
+                "preview_rows": preview_rows}
+
     @staticmethod
-    def _read_frame(content: bytes, extension: str) -> pd.DataFrame:
+    def _read_frame(content: bytes, extension: str, sheet_name: str | None = None,
+                    nrows: int | None = None) -> pd.DataFrame:
         try:
             if extension == ".csv":
-                return pd.read_csv(BytesIO(content), sep=None, engine="python", encoding="utf-8-sig", dtype="string")
-            return pd.read_excel(BytesIO(content), engine="openpyxl" if extension == ".xlsx" else "xlrd")
+                decode_error = None
+                for encoding in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+                    try:
+                        return pd.read_csv(BytesIO(content), sep=None, engine="python",
+                                           encoding=encoding, dtype="string", nrows=nrows)
+                    except UnicodeDecodeError as exc:
+                        decode_error = exc
+                raise ValueError(f"Could not detect a supported CSV encoding: {decode_error}")
+            return pd.read_excel(BytesIO(content), sheet_name=sheet_name or 0,
+                                 engine="openpyxl" if extension == ".xlsx" else "xlrd",
+                                 nrows=nrows, dtype="string")
         except Exception as exc:
             raise ValueError(f"Could not read the uploaded {extension[1:].upper()} file: {exc}") from exc
 
