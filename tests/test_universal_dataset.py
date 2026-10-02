@@ -22,8 +22,8 @@ def client(tmp_path, monkeypatch):
         yield test_client
 
 
-def upload(client, filename, content):
-    return client.post("/api/dataset/upload", files={"file": (filename, content, "application/octet-stream")})
+def upload(client, filename, content, data=None):
+    return client.post("/api/dataset/upload", files={"file": (filename, content, "application/octet-stream")}, data=data or {})
 
 
 def uploaded_customer_dataset(client):
@@ -65,6 +65,120 @@ def test_customer_operations_dataset(client, tmp_path):
     assert (folder / "customer_operations.csv").is_file()
     assert (folder / "cleaned.csv").is_file()
     assert (folder / "profile.json").is_file()
+
+
+def test_upload_profiles_and_summarizes_all_domain_samples(client):
+    samples = {
+        "hr.csv": "HR / Workforce",
+        "ecommerce.csv": "E-commerce",
+        "finance.csv": "Finance",
+        "healthcare.csv": "Healthcare",
+    }
+    reports = {}
+    for filename, expected_type in samples.items():
+        report = upload(client, filename, (ROOT / "data" / "sample" / filename).read_bytes()).json()
+        assert report["dataset_type"] == expected_type
+        assert report["rows"] > 0
+        assert report["charts"]
+        reports[filename] = report
+
+    hr_kpis = {item["label"] for item in reports["hr.csv"]["kpis"]}
+    assert {"Employees", "Average Salary", "Average Age", "Departments", "Attrition Rate"}.issubset(hr_kpis)
+    ecommerce_kpis = {item["label"]: item for item in reports["ecommerce.csv"]["kpis"]}
+    assert ecommerce_kpis["Total Revenue"]["value"] == pytest.approx(1023.5)
+    assert ecommerce_kpis["Total Revenue"]["source_columns"] == ["price", "quantity"]
+    finance_kpis = {item["label"] for item in reports["finance.csv"]["kpis"]}
+    assert {"Total Income", "Total Expenses"}.issubset(finance_kpis)
+    healthcare_kpis = {item["label"]: item["value"] for item in reports["healthcare.csv"]["kpis"]}
+    assert healthcare_kpis["Patients"] == 12
+    assert healthcare_kpis["Recovery Rate"] == pytest.approx(66.67)
+
+
+def test_encoding_delimiter_preview_masks_pii(client):
+    content = "Name;EMAIL\nAndré;andre@example.test\n".encode("cp1252")
+    response = client.post("/api/datasets/preview", files={"file": ("leads.csv", content, "text/csv")})
+    assert response.status_code == 200, response.text
+    preview = response.json()
+    assert preview["columns"][1]["semantic_type"] == "email"
+    assert "andre@example.test" not in str(preview["preview_rows"])
+    assert "@example.test" in preview["preview_rows"][0]["EMAIL"]
+
+
+def test_excel_preview_and_upload_select_requested_sheet(client):
+    workbook = BytesIO()
+    with pd.ExcelWriter(workbook, engine="openpyxl") as writer:
+        pd.DataFrame({"Other": [1]}).to_excel(writer, sheet_name="Notes", index=False)
+        pd.DataFrame({"Created": ["2025-01-01", "2025-02-01"], "Status": ["Open", "Won"]}).to_excel(writer, sheet_name="Leads", index=False)
+    content = workbook.getvalue()
+
+    preview = client.post("/api/datasets/preview", files={"file": ("workbook.xlsx", content)}, data={"sheet_name": "Leads"})
+    assert preview.status_code == 200, preview.text
+    assert preview.json()["sheet_names"] == ["Notes", "Leads"]
+    assert preview.json()["selected_sheet"] == "Leads"
+    uploaded = client.post("/api/datasets/upload", files={"file": ("workbook.xlsx", content)}, data={"sheet_name": "Leads"})
+    assert uploaded.status_code == 200, uploaded.text
+    assert uploaded.json()["rows"] == 2
+    assert {item["name"] for item in uploaded.json()["schema"]} == {"created", "status"}
+
+
+def test_server_table_search_paging_sort_and_pii_masking(client):
+    report = uploaded_customer_dataset(client)
+    dataset_id = report["dataset_id"]
+    first_page = client.get("/api/dataset/rows", params={"dataset_id": dataset_id, "page": 1, "page_size": 4})
+    assert first_page.status_code == 200
+    assert first_page.json()["total"] == 13
+    assert len(first_page.json()["rows"]) == 4
+    assert "lead01@example.test" not in str(first_page.json())
+    assert "5550101001" not in str(first_page.json())
+
+    searched = client.get("/api/dataset/rows", params={"dataset_id": dataset_id, "search": "Agent-02"}).json()
+    assert searched["total"] > 0
+    sorted_rows = client.get("/api/dataset/rows", params={
+        "dataset_id": dataset_id, "sort_by": "status", "sort_order": "asc", "page_size": 2,
+    }).json()
+    assert len(sorted_rows["rows"]) == 2
+    assert sorted_rows["rows"][0]["status"] <= sorted_rows["rows"][1]["status"]
+
+
+def test_path_api_clean_report_download_and_remove(client):
+    report = uploaded_customer_dataset(client)
+    dataset_id = report["dataset_id"]
+    assert client.get(f"/api/datasets/{dataset_id}").json()["status"] == "analyzed"
+    assert client.get(f"/api/datasets/{dataset_id}/profile").status_code == 200
+    assert client.post(f"/api/datasets/{dataset_id}/clean").status_code == 200
+    assert client.get(f"/api/datasets/{dataset_id}/kpis").status_code == 200
+    assert client.get(f"/api/datasets/{dataset_id}/visualizations").status_code == 200
+    assert client.get(f"/api/datasets/{dataset_id}/insights").status_code == 200
+    assert client.get(f"/api/datasets/{dataset_id}/anomalies").status_code == 200
+    assert client.get(f"/api/datasets/{dataset_id}/forecast").status_code == 200
+    assert client.get(f"/api/datasets/{dataset_id}/report").status_code == 200
+    assert client.get(f"/api/datasets/{dataset_id}/download").status_code == 200
+    assert client.post(f"/api/datasets/{dataset_id}/ask", json={"question": "How many records?"}).status_code == 200
+    assert client.get(f"/api/dataset/export-clean.xlsx", params={"dataset_id": dataset_id}).status_code == 200
+    assert client.delete(f"/api/datasets/{dataset_id}").status_code == 200
+    assert client.get(f"/api/datasets/{dataset_id}").status_code == 404
+    assert client.delete("/api/datasets/demo-sales").status_code == 400
+
+
+def test_visualization_engine_recommends_histogram_pie_scatter_and_correlation():
+    rows = 12
+    raw = pd.DataFrame({"Segment": ["A"] * 4 + ["B"] * 4 + ["C"] * 4,
+                        "Spend": list(range(1, rows + 1)),
+                        "Sales": [value * 2 for value in range(1, rows + 1)]})
+    _, report = analyze_dataset(raw, "relationships.csv")
+    kinds = {chart["kind"] for chart in report["charts"]}
+    assert {"histogram", "pie", "scatter"}.issubset(kinds)
+    assert report["correlations"][0]["pearson"] == pytest.approx(1.0)
+    insight = next(item for item in report["insights"] if item["title"] == "Strong numeric relationship")
+    assert insight["source_columns"] == ["spend", "sales"]
+
+
+def test_time_granularity_and_invalid_excel_sheet(client):
+    daily = pd.DataFrame({"Date": ["2025-01-01", "2025-01-02", "2025-01-10"], "Score": [1, 2, 5]})
+    _, daily_report = analyze_dataset(daily, "daily.csv")
+    assert daily_report["time_granularity"] == "daily"
+    invalid_sheet = client.post("/api/datasets/preview", files={"file": ("bad.json", b"{}")})
+    assert invalid_sheet.status_code == 400
 
 
 def test_sales_dataset_uses_available_financial_kpis(client):

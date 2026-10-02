@@ -1,0 +1,13 @@
+employee_id,age,department,salary,experience,attrition,hire_date,location
+E001,31,Engineering,112000,7,No,2019-04-15,Seattle
+E002,42,Sales,96000,15,Yes,2014-08-20,Austin
+E003,29,Engineering,104000,5,No,2021-01-11,Seattle
+E004,36,Human Resources,88000,10,No,2017-06-03,Chicago
+E005,25,Sales,72000,2,Yes,2023-09-18,Austin
+E006,48,Finance,128000,22,No,2009-03-09,New York
+E007,33,Engineering,118000,9,No,2016-11-22,Seattle
+E008,39,Finance,121000,13,Yes,2012-02-07,New York
+E009,27,Human Resources,79000,4,No,2022-05-30,Chicago
+E010,45,Sales,109000,19,No,2010-10-12,Austin
+E011,30,Engineering,101000,6,No,2020-07-01,Seattle
+E012,41,Finance,132000,17,No,2013-12-05,New York

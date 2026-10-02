@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from .services.kpi_engine import generate_kpis
+from .services.chart_engine import generate_visualizations
 
 COLUMN_ALIASES = {
     "date": {"date", "created", "created_at", "timestamp", "order_date", "transaction_date", "sale_date", "sales_date", "invoice_date"},
@@ -259,21 +260,45 @@ def _group_sums(frame: pd.DataFrame, dimension: str, metric: str, limit: int = 1
     return [{"label": str(value), "value": round(float(total), 2)} for value, total in grouped.items()]
 
 
-def _time_series(frame: pd.DataFrame, schema: list[dict], numeric_column: str | None) -> tuple[str | None, list[dict]]:
-    date_column = _semantic_column(schema, "datetime") or _semantic_column(schema, "date")
+def _time_series(frame: pd.DataFrame, schema: list[dict], numeric_column: str | None) -> tuple[str | None, str | None, list[dict]]:
+    date_columns = [column["name"] for column in schema if column["semantic_type"] in {"datetime", "date"}]
+    date_column = next((column for column in date_columns if any(token in column for token in ("date", "created", "time", "timestamp"))), date_columns[0] if date_columns else None)
     if not date_column:
-        return None, []
+        return None, None, []
     valid = frame.dropna(subset=[date_column]).copy()
     if valid.empty:
-        return date_column, []
-    valid["__period"] = valid[date_column].dt.to_period("M")
+        return date_column, None, []
+    span_days = max(0, (valid[date_column].max() - valid[date_column].min()).days)
+    if span_days <= 45:
+        granularity, frequency = "daily", "D"
+    elif span_days <= 270:
+        granularity, frequency = "weekly", "W-SUN"
+    elif span_days <= 1825:
+        granularity, frequency = "monthly", "M"
+    elif span_days <= 7300:
+        granularity, frequency = "quarterly", "Q"
+    else:
+        granularity, frequency = "yearly", "Y"
+    valid["__period"] = valid[date_column].dt.to_period(frequency)
     if numeric_column:
         grouped = valid.groupby("__period")[numeric_column].sum()
-        points = [{"period": period.strftime("%b %Y"), "value": round(float(value), 2)} for period, value in grouped.items()]
+        points = [{"period": _format_period(period, granularity), "value": round(float(value), 2)} for period, value in grouped.items()]
     else:
         grouped = valid.groupby("__period").size()
-        points = [{"period": period.strftime("%b %Y"), "value": int(value)} for period, value in grouped.items()]
-    return date_column, points
+        points = [{"period": _format_period(period, granularity), "value": int(value)} for period, value in grouped.items()]
+    return date_column, granularity, points
+
+
+def _format_period(period, granularity: str) -> str:
+    if granularity == "daily":
+        return period.strftime("%d %b %Y")
+    if granularity == "weekly":
+        return f"Week of {period.start_time.strftime('%d %b %Y')}"
+    if granularity == "quarterly":
+        return f"Q{period.quarter} {period.year}"
+    if granularity == "yearly":
+        return str(period.year)
+    return period.strftime("%b %Y")
 
 
 def _generate_quality(frame: pd.DataFrame, schema: list[dict], cleaning: dict) -> dict:
@@ -330,9 +355,10 @@ def analyze_dataset(raw_frame: pd.DataFrame, filename: str) -> tuple[pd.DataFram
             measure = "revenue" if revenue_column else "records"
             charts.append({"kind": "bar", "title": f"{'Revenue' if revenue_column else 'Records'} by {column['original_name']}", "x_key": "label", "y_key": "value", "y_label": measure, "data": chart_points, "source_columns": [column["name"]] + revenue_source_columns})
 
-    date_column, record_trend = _time_series(frame, schema, revenue_column)
+    date_column, time_granularity, record_trend = _time_series(frame, schema, revenue_column)
     if record_trend:
         charts.append({"kind": "line", "title": f"{'Revenue' if revenue_column else 'Record creation'} trend", "x_key": "period", "y_key": "value", "y_label": "revenue" if revenue_column else "records", "data": record_trend, "source_columns": [date_column] + revenue_source_columns})
+    charts, correlations = generate_visualizations(frame, schema, dimensions, charts, revenue_column)
 
     kpis = generate_kpis(frame, schema, quality, revenue_column, profit_column, date_column, record_trend, revenue_source_columns)
 
@@ -364,6 +390,12 @@ def analyze_dataset(raw_frame: pd.DataFrame, filename: str) -> tuple[pd.DataFram
     if quality["duplicate_rows"]:
         alerts.append({"title": "Duplicate records", "detail": f"{quality['duplicate_rows']} exact duplicate rows detected; the original rows were preserved.", "severity": "medium", "source_columns": []})
     alerts.extend({"title": f"Invalid {column['semantic_type']} values", "detail": f"{cleaning['invalid_values_by_column'][column['name']]} values could not be parsed.", "severity": "high", "source_columns": [column["name"]]} for column in schema if cleaning["invalid_values_by_column"].get(column["name"], 0))
+    alerts.extend({"title": f"Repeated identifier values: {item['column']}", "detail": f"{item['count']} identifier values are repeated.", "severity": "medium", "source_columns": [item["column"]]} for item in cleaning["duplicate_ids_by_column"])
+    alerts.extend({"title": f"Empty column: {column}", "detail": "This column contains no usable values.", "severity": "low", "source_columns": [column]} for column in cleaning["empty_columns"])
+    alerts.extend({"title": f"Constant column: {column}", "detail": "This field has one distinct non-empty value and does not segment the dataset.", "severity": "low", "source_columns": [column]} for column in cleaning["constant_columns"])
+    alerts.extend({"title": f"High-cardinality field: {column}", "detail": "This field is excluded from category charts to avoid an unreadable visualization.", "severity": "low", "source_columns": [column]} for column in cleaning["high_cardinality_columns"])
+    if cleaning["case_inconsistencies"]:
+        alerts.append({"title": "Case-inconsistent categories", "detail": f"{len(cleaning['case_inconsistencies'])} fields contain values differing only by letter case.", "severity": "low", "source_columns": sorted({item["column"] for item in cleaning["case_inconsistencies"]})})
     alerts.extend(outlier_alerts)
     for column in schema:
         if column["semantic_type"] in DIMENSION_SEMANTICS and 1 < column["unique_count"] <= 30:
@@ -387,6 +419,16 @@ def analyze_dataset(raw_frame: pd.DataFrame, filename: str) -> tuple[pd.DataFram
             insights.append({"title": f"Top {dimension['semantic_type']}", "text": text, "source_columns": sources, "calculation": calculation})
     if date_column and record_trend:
         insights.append({"title": "Time coverage", "text": f"Records span {record_trend[0]['period']} through {record_trend[-1]['period']}.", "source_columns": [date_column], "calculation": "Minimum and maximum valid date"})
+        if revenue_column and len(record_trend) > 1 and record_trend[-2]["value"]:
+            growth = (record_trend[-1]["value"] / record_trend[-2]["value"] - 1) * 100
+            insights.append({"title": "Latest period change", "text": f"{revenue_column} changed {growth:+.1f}% from the previous period.", "source_columns": [date_column] + revenue_source_columns, "calculation": "(latest period sum / previous period sum - 1) × 100"})
+    for correlation in correlations:
+        if abs(correlation["pearson"]) >= 0.7:
+            direction = "positive" if correlation["pearson"] > 0 else "negative"
+            insights.append({"title": "Strong numeric relationship",
+                             "text": f"{correlation['x']} and {correlation['y']} have a {direction} correlation of {correlation['pearson']:.2f}.",
+                             "source_columns": [correlation["x"], correlation["y"]],
+                             "calculation": f"Pearson correlation, n={correlation['sample_size']}"})
 
     forecast = _forecast(frame, schema, revenue_column, date_column)
     report = {
@@ -410,9 +452,11 @@ def analyze_dataset(raw_frame: pd.DataFrame, filename: str) -> tuple[pd.DataFram
         "sensitive_columns": [{"name": item["name"], "semantic_type": item["semantic_type"], "message": "Potentially identifiable information; values are masked in analysis."} for item in schema if item["semantic_type"] in PII_SEMANTICS],
         "dimensions": dimensions,
         "date_column": date_column,
+        "time_granularity": time_granularity,
         "date_range": {"start": record_trend[0]["period"], "end": record_trend[-1]["period"]} if record_trend else None,
         "time_series": record_trend,
         "numeric_statistics": numeric_statistics,
+        "correlations": correlations,
         "kpis": kpis,
         "charts": charts,
         "insights": insights,
@@ -447,7 +491,9 @@ def _classify_dataset(schema: list[dict]) -> tuple[str, float, list[str]]:
         return "Finance", 0.88, entities
     if "currency" in semantics and any(token in " ".join(names) for token in ("sales", "revenue", "amount")):
         return "Sales / Revenue", 0.88, entities
-    if any(any(token in name for token in ("stock", "inventory", "sku", "warehouse")) for name in names):
+    has_inventory_field = any(any(token in name for token in ("stock", "inventory", "sku")) for name in names)
+    has_warehouse_field = any("warehouse" in name for name in names) and any(any(token in name for token in ("product", "quantity", "stock", "inventory")) for name in names)
+    if has_inventory_field or has_warehouse_field:
         return "Inventory / Operations", 0.84, entities
     return "General Dataset", 0.68, entities
 
@@ -475,6 +521,14 @@ def _forecast(frame: pd.DataFrame, schema: list[dict], revenue_column: str | Non
 
 def generate_answer(frame: pd.DataFrame, report: dict, question: str) -> dict:
     query = normalize_name(question)
+    revenue_column = report.get("revenue_column")
+    revenue_sources = [revenue_column] if revenue_column else []
+    for derived in report.get("derived_metrics", []):
+        if derived["column"] == revenue_column and revenue_column not in frame.columns:
+            frame = frame.copy()
+            frame[revenue_column] = frame[derived["source_columns"][0]] * frame[derived["source_columns"][1]]
+            revenue_sources = derived["source_columns"]
+            break
     if "duplicate" in query:
         answer = f"{report['quality']['duplicate_rows']} exact duplicate records were detected."
         return _answer(question, answer, [f"Duplicate rows: {report['quality']['duplicate_rows']}"], [], "Count rows with identical values across all columns")
@@ -486,19 +540,26 @@ def generate_answer(frame: pd.DataFrame, report: dict, question: str) -> dict:
     if "record" in query and any(token in query for token in ("how_many", "total", "count")):
         return _answer(question, f"The dataset contains {report['rows']:,} records.", [f"Rows: {report['rows']:,}"], [], "COUNT(dataset rows)")
 
+    if revenue_column and any(token in query for token in ("revenue", "sales", "income")) and not _question_column(report["schema"], query):
+        total = float(frame[revenue_column].sum())
+        formula = f"SUM({revenue_sources[0]} × {revenue_sources[1]})" if len(revenue_sources) == 2 else f"SUM({revenue_column})"
+        return _answer(question, f"Total revenue is {total:,.2f}.", [f"Total revenue: {total:,.2f}"], revenue_sources, formula)
+
     column = _question_column(report["schema"], query)
     if column:
         metadata = next(item for item in report["schema"] if item["name"] == column)
         if metadata["semantic_type"] in PII_SEMANTICS:
             count = int(frame[column].nunique(dropna=True))
             return _answer(question, f"There are {count:,} unique values in {metadata['original_name']}. Individual values are hidden because this field is sensitive.", [f"Unique values: {count:,}"], [column], f"COUNT(DISTINCT {column}); values masked")
-        metric_column = next((item["name"] for item in report["schema"] if item["semantic_type"] == "currency" and any(token in item["name"] for token in ("revenue", "sales", "amount", "total", "price", "value"))), None)
+        metric_column = revenue_column or next((item["name"] for item in report["schema"] if item["semantic_type"] == "currency" and any(token in item["name"] for token in ("revenue", "sales", "amount", "total", "price", "value"))), None)
         if metadata["semantic_type"] in DIMENSION_SEMANTICS and metric_column and any(token in query for token in ("revenue", "sales", "amount")):
             values = _group_sums(frame, column, metric_column, limit=8)
             if values:
                 answer = f"{values[0]['label']} has the highest {metric_column} ({values[0]['value']:,.2f})."
                 evidence = [f"{item['label']}: {item['value']:,.2f}" for item in values[:6]]
-                return _answer(question, answer, evidence, [column, metric_column], f"SUM({metric_column}) grouped by {column}, sorted descending")
+                sources = [column] + revenue_sources
+                calculation = f"SUM({revenue_sources[0]} × {revenue_sources[1]}) grouped by {column}, sorted descending" if len(revenue_sources) == 2 else f"SUM({metric_column}) grouped by {column}, sorted descending"
+                return _answer(question, answer, evidence, sources, calculation)
         if metadata["semantic_type"] in {"numeric", "currency", "percentage"}:
             values = frame[column].dropna()
             if not values.empty:

@@ -207,6 +207,17 @@ def get_dataset(dataset_id: str):
             "columns": report["column_count"], "status": "analyzed"}
 
 
+@app.delete("/api/datasets/{dataset_id}")
+def delete_dataset(dataset_id: str):
+    try:
+        store.delete(dataset_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"dataset_id": dataset_id, "status": "removed"}
+
+
 @app.get("/api/datasets/{dataset_id}/profile")
 def get_dataset_profile(dataset_id: str):
     return _bundle(dataset_id)["report"]

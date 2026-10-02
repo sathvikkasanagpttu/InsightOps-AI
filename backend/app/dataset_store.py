@@ -2,8 +2,10 @@ import json
 import re
 import uuid
 from datetime import datetime, timezone
+from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
+from shutil import rmtree
 
 import pandas as pd
 
@@ -42,10 +44,18 @@ class DatasetStore:
             "sheet_name": sheet_name,
             "report": report,
         }
+        report["file_size"] = len(content)
+        report["memory_bytes"] = int(cleaned_frame.memory_usage(index=True, deep=True).sum())
+        report["created_at"] = metadata["created_at"]
+        report["sheet_name"] = sheet_name
         (folder / "profile.json").write_text(json.dumps(metadata, ensure_ascii=True), encoding="utf-8")
         return report
 
     def get(self, dataset_id: str) -> dict:
+        return self._load_dataset(dataset_id)
+
+    @lru_cache(maxsize=4)
+    def _load_dataset(self, dataset_id: str) -> dict:
         if dataset_id == "demo-sales":
             frame = self._read_path(self.demo_path)
             cleaned_frame, report = analyze_dataset(frame, self.demo_path.name)
@@ -68,6 +78,15 @@ class DatasetStore:
         return {"dataset_id": dataset_id, "filename": metadata["filename"],
                 "frame": frame, "report": report, "cleaned_path": clean_path,
                 "raw_path": raw_path}
+
+    def delete(self, dataset_id: str) -> None:
+        if dataset_id == "demo-sales":
+            raise ValueError("The bundled demo dataset cannot be removed.")
+        folder = self._dataset_folder(dataset_id)
+        if not folder.is_dir():
+            raise KeyError("Dataset not found.")
+        self._load_dataset.cache_clear()
+        rmtree(folder)
 
     def preview(self, filename: str | None, content: bytes, sheet_name: str | None = None) -> dict:
         if len(content) > MAX_UPLOAD_BYTES:

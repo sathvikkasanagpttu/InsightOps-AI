@@ -1,0 +1,13 @@
+patient_id,age,condition,treatment,cost,admitted_date,outcome
+P001,34,Asthma,Medication,420,2025-01-03,Recovered
+P002,58,Diabetes,Insulin,1850,2025-01-07,Stable
+P003,42,Injury,Physiotherapy,920,2025-02-02,Recovered
+P004,67,Cardiac,Procedure,8400,2025-02-11,Stable
+P005,29,Asthma,Medication,380,2025-03-01,Recovered
+P006,51,Diabetes,Insulin,2100,2025-03-12,Improved
+P007,73,Cardiac,Procedure,9200,2025-04-04,Stable
+P008,39,Injury,Physiotherapy,1100,2025-04-10,Recovered
+P009,61,Diabetes,Insulin,1980,2025-05-02,Improved
+P010,46,Asthma,Medication,440,2025-05-18,Recovered
+P011,55,Cardiac,Procedure,7800,2025-06-02,Stable
+P012,31,Injury,Physiotherapy,880,2025-06-21,Recovered

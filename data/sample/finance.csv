@@ -1,0 +1,13 @@
+transaction_date,category,income,expenses,cash_flow,account
+2025-01-01,Subscriptions,18400,12300,6100,Operating
+2025-02-01,Services,22100,14800,7300,Operating
+2025-03-01,Subscriptions,23900,16200,7700,Operating
+2025-04-01,Services,21800,15400,6400,Operating
+2025-05-01,Licensing,27400,18100,9300,Investing
+2025-06-01,Subscriptions,29100,19000,10100,Operating
+2025-07-01,Services,26800,17700,9100,Operating
+2025-08-01,Licensing,31500,20500,11000,Investing
+2025-09-01,Subscriptions,33700,21900,11800,Operating
+2025-10-01,Services,30200,20800,9400,Operating
+2025-11-01,Licensing,35900,22400,13500,Investing
+2025-12-01,Subscriptions,38100,23700,14400,Operating

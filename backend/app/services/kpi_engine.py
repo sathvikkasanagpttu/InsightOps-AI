@@ -47,8 +47,15 @@ def generate_kpis(frame: pd.DataFrame, schema: list[dict], quality: dict,
         if semantic == "delivery_mode":
             add_kpi("Delivery Modes", distinct_count, "count", [name])
         if semantic in {"category", "source"} and distinct_count <= 100:
-            label = "Departments" if "department" in normalized else f"{column['original_name']} Count"
-            add_kpi(label, distinct_count, "count", [name])
+            dimension_labels = {
+                "department": "Departments", "category": "Categories", "source": "Sources",
+                "country": "Countries", "product": "Products", "treatment": "Treatments",
+                "condition": "Conditions", "outcome": "Outcomes", "gender": "Genders",
+                "account": "Accounts",
+            }
+            label = dimension_labels.get(normalized, f"{column['original_name']} Count")
+            if not any(token in normalized for token in ("product", "item", "sku")):
+                add_kpi(label, distinct_count, "count", [name])
             if any(token in normalized for token in ("product", "item", "sku")):
                 add_kpi("Unique Products", distinct_count, "count", [name])
 
@@ -57,7 +64,7 @@ def generate_kpis(frame: pd.DataFrame, schema: list[dict], quality: dict,
             if values.empty:
                 continue
             if semantic == "currency" and name not in {revenue_column, profit_column}:
-                add_kpi(f"Total {column['original_name']}", round(float(values.sum()), 2), "currency", [name])
+                add_kpi(f"Total {column['original_name'].strip().title()}", round(float(values.sum()), 2), "currency", [name])
                 used_columns.add(name)
             if "age" in normalized:
                 add_kpi("Average Age", round(float(values.mean()), 2), "number", [name])
@@ -84,16 +91,18 @@ def generate_kpis(frame: pd.DataFrame, schema: list[dict], quality: dict,
 
     if revenue_column:
         total_revenue = float(frame[revenue_column].sum())
-        add_kpi("Total Revenue", round(total_revenue, 2), "currency", revenue_sources)
+        revenue_label = "Total Income" if "income" in revenue_column else "Total Revenue"
+        add_kpi(revenue_label, round(total_revenue, 2), "currency", revenue_sources)
         if order_id_column and not orders_column:
             denominator = int(frame[order_id_column].nunique(dropna=True))
         else:
             denominator = float(frame[orders_column].sum()) if orders_column else 0
         if denominator:
-            add_kpi("Average Order Value", round(total_revenue / denominator, 2), "currency", revenue_sources + ([orders_column or order_id_column] if orders_column or order_id_column else []))
+            value_label = "Average Transaction Value" if revenue_label == "Total Income" else "Average Order Value"
+            add_kpi(value_label, round(total_revenue / denominator, 2), "currency", revenue_sources + ([orders_column or order_id_column] if orders_column or order_id_column else []))
         if date_column and len(time_series or []) > 1 and time_series[-2]["value"]:
             growth = (time_series[-1]["value"] / time_series[-2]["value"] - 1) * 100
-            add_kpi("Revenue Growth", round(growth, 2), "percent", [date_column] + revenue_sources)
+            add_kpi("Income Growth" if revenue_label == "Total Income" else "Revenue Growth", round(growth, 2), "percent", [date_column] + revenue_sources)
     if profit_column:
         profit = float(frame[profit_column].sum())
         add_kpi("Total Profit", round(profit, 2), "currency", [profit_column])
@@ -106,5 +115,11 @@ def generate_kpis(frame: pd.DataFrame, schema: list[dict], quality: dict,
         attrition_count = int(values.isin({"yes", "true", "1", "left", "attrited", "terminated"}).sum())
         if len(values):
             add_kpi("Attrition Rate", round(attrition_count / len(values) * 100, 2), "percent", [attrition_column])
+    outcome_column = _find(schema, lambda column: any(token in column["name"] for token in ("outcome", "recovery", "recovered")))
+    if outcome_column:
+        outcomes = frame[outcome_column].dropna().astype(str).str.strip().str.lower()
+        recovered = int(outcomes.isin({"recovered", "improved", "resolved", "successful", "success"}).sum())
+        if len(outcomes):
+            add_kpi("Recovery Rate", round(recovered / len(outcomes) * 100, 2), "percent", [outcome_column])
 
     return kpis

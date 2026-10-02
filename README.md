@@ -9,10 +9,10 @@ InsightOps AI profiles CSV and Excel datasets, detects schema and semantics, cle
 - CSV, XLSX and XLS uploads up to 50 MB
 - Dataset sessions with IDs and disk-backed raw/clean copies under `data/uploads/`
 - Semantic schema detection, type conversion, missing/duplicate/invalid/outlier checks and PII masking
-- Dataset-specific KPIs, dimension charts, insights and date-based forecasts
+- Dataset-specific KPIs, category/time-series charts, histograms, scatter plots, correlations, insights and date-based forecasts
 - AI Analyst answers with evidence, source columns and calculation descriptions; no external AI provider
-- Data Studio sections for overview, schema, quality, missing values, duplicates, data types, sensitive fields and cleaning actions
-- Cleaned CSV export
+- Data Studio sections for overview, schema, quality, missing values, duplicates, data types, sensitive fields, cleaning actions and a paginated/searchable data table
+- CSV/XLSX clean export, JSON profile/report and path-based API routes
 - Animated Three.js lamp login screen with responsive local-preview access
 - Bundled sales and customer-operations sample datasets
 
@@ -63,13 +63,23 @@ docker compose up --build
 
 - `data/sample/sales.csv` exercises financial analytics.
 - `data/sample/customer_operations.csv` exercises universal CRM/lead analysis, PII detection, invalid values and quality alerts.
+- `data/sample/hr.csv` exercises employee, salary, department and attrition metrics.
+- `data/sample/ecommerce.csv` exercises orders, customers, product/category/country analysis and revenue derived from `price × quantity`.
+- `data/sample/finance.csv` exercises income, expenses and cash-flow metrics.
+- `data/sample/healthcare.csv` exercises patients, treatment/outcome analysis and recovery rate.
 
 Uploaded datasets are local session data, not source fixtures. Each upload returns a `dataset_id`; frontend requests use that ID to isolate profiles and analytics. `demo-sales` selects the bundled sales dataset. Uploaded raw files and cleaned copies are retained under `data/uploads/<dataset_id>/` and are excluded from Git.
 
 ## Dataset API
 
-Upload a multipart field named `file`:
+The complete route contract and request examples are in [docs/api.md](docs/api.md). Upload a multipart field named `file`; call `/api/datasets/preview` first for a masked sample, then `/api/datasets/upload` to persist the chosen file/sheet.
 
+- `POST /api/datasets/preview`
+- `POST /api/datasets/upload`
+- `GET /api/dataset/rows?dataset_id=...&page=1&page_size=25`
+- `DELETE /api/datasets/{dataset_id}`
+- `GET /api/datasets/{dataset_id}/report`
+- `GET /api/dataset/export-clean.xlsx?dataset_id=...`
 - `POST /api/dataset/upload`
 - `GET /api/dataset/profile?dataset_id=...`
 - `GET /api/dataset/schema?dataset_id=...`
@@ -82,6 +92,8 @@ Upload a multipart field named `file`:
 - `GET /api/dataset/export-clean?dataset_id=...`
 - `POST /api/analyst/ask` with `{"dataset_id":"...","question":"..."}`
 - `GET /api/health`
+
+Path-based routes are also available at `/api/datasets/{id}/profile`, `/clean`, `/kpis`, `/visualizations`, `/insights`, `/anomalies`, `/forecast`, `/ask`, `/report` and `/download`. Each route operates only on the supplied session ID.
 
 Legacy demo routes (`/api/overview`, `/api/trends`, `/api/categories`, `/api/regions`, `/api/anomalies`, `/api/forecast`, and `/api/ask`) remain available and accept an optional `dataset_id` query parameter.
 
