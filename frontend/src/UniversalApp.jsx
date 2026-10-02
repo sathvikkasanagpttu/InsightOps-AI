@@ -637,7 +637,7 @@ export default function UniversalApp({ onSignOut }) {
         </div>
       </aside>
 
-      <main className="enterprise-workspace-canvas">
+      <div className="enterprise-main-shell">
         {/* Modern Enterprise Header */}
         <header className="universal-header">
           <div className="header-left-breadcrumbs">
@@ -837,8 +837,9 @@ export default function UniversalApp({ onSignOut }) {
           />
         </header>
 
-        {/* Quick Sample Dataset Bar */}
-        <div className="sample-datasets-bar">
+        <main className="enterprise-workspace-canvas">
+          {/* Quick Sample Dataset Bar */}
+          <div className="sample-datasets-bar">
           <span style={{ fontSize: "11px", fontWeight: "600", color: "#94a3b8" }}>Sample Datasets:</span>
           {sampleDatasets.map(ds => (
             <button
@@ -1815,6 +1816,8 @@ export default function UniversalApp({ onSignOut }) {
           </div>
         )}
 
+        </main>
+
         <footer className="enterprise-status-footer">
           <div className="status-footer-left">
             <span className="telemetry-live-dot" />
@@ -1836,7 +1839,7 @@ export default function UniversalApp({ onSignOut }) {
             <span className="status-item status-muted">InsightOps AI Enterprise v2.4</span>
           </div>
         </footer>
-      </main>
+      </div>
     </div>
   );
 }
