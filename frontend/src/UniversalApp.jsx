@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  AlertTriangle, BarChart3, BrainCircuit, Database, Download, Filter,
+  AlertTriangle, BarChart3, BrainCircuit, Database, Download, Filter, LogOut,
   Search, Send, ShieldCheck, Sparkles, TrendingUp, Upload
 } from "lucide-react";
 import {
@@ -47,7 +47,7 @@ function ChartPanel({ chart }) {
   </section>;
 }
 
-function App() {
+function App({ onSignOut }) {
   const [activeView, setActiveView] = useState("overview");
   const [activeSection, setActiveSection] = useState("Overview");
   const [datasetId, setDatasetId] = useState(() => localStorage.getItem("insightops.datasetId") || "demo-sales");
@@ -180,7 +180,7 @@ function App() {
     <main>
       <header className="universal-header">
         <div><p className="eyebrow">{heading[0]}</p><h1>{heading[1]} <em>{heading[2]}</em></h1>{profile && <p className="dataset-meta">{profile.filename} · {profile.rows.toLocaleString()} records · {profile.column_count} columns</p>}</div>
-        <div className="header-actions"><button className="upload" type="button" onClick={() => fileInput.current?.click()} disabled={uploading}><Upload size={17} />{uploading ? "Analyzing..." : "Upload dataset"}</button>{profile && <a className="icon-action" href={`${API_BASE}/api/dataset/export-clean${datasetQuery}`} title="Download cleaned dataset" aria-label="Download cleaned dataset"><Download size={17} /></a>}</div>
+        <div className="header-actions"><button className="upload" type="button" onClick={() => fileInput.current?.click()} disabled={uploading}><Upload size={17} />{uploading ? "Analyzing..." : "Upload dataset"}</button>{profile && <a className="icon-action" href={`${API_BASE}/api/dataset/export-clean${datasetQuery}`} title="Download cleaned dataset" aria-label="Download cleaned dataset"><Download size={17} /></a>}<button className="icon-action sign-out-action" type="button" onClick={onSignOut} aria-label="Sign out" title="Sign out"><LogOut size={17} /></button></div>
         <input ref={fileInput} className="file-input" type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={uploadDataset} aria-label="Choose CSV or Excel dataset" />
       </header>
 
