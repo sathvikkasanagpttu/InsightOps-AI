@@ -365,3 +365,32 @@ def delete_recipe(recipe_id: str):
     finally:
         db.close()
 
+
+class ExecutePipelineRequest(BaseModel):
+    operations: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+@router.post("/api/datasets/{dataset_id}/transform")
+def transform_dataset_pipeline(
+    dataset_id: str,
+    req: ExecutePipelineRequest
+):
+    """
+    Applies an ad-hoc or staged transformation pipeline to the dataset,
+    re-profiles the cleaned frame, updates metrics, and returns the audit log.
+    """
+    store = get_store()
+    try:
+        res = store.apply_transformations(dataset_id, req.operations)
+        return res
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/api/datasets/{dataset_id}/transformation-history")
+def get_dataset_transformation_history(dataset_id: str):
+    """Returns the transformation history of the dataset."""
+    store = get_store()
+    return store.get_transformation_history(dataset_id)
+
+

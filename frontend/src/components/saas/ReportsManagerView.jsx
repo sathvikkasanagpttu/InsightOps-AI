@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import {
   FileText, Plus, Copy, Share2, Calendar, Trash2, ArrowRight,
-  ExternalLink, Check, Download, Search, Edit3, X, Eye, Lock
+  ExternalLink, Check, Download, Search, Edit3, X, Eye, Lock,
+  Send, History, Sparkles
 } from "lucide-react";
 import { api } from "../../lib/api";
 import { useAuth } from "../../context/AuthContext";
@@ -27,6 +28,19 @@ export default function ReportsManagerView({ onNavigate, addToast }) {
   const [scheduleModalReport, setScheduleModalReport] = useState(null);
   const [scheduleFreq, setScheduleFreq] = useState("weekly");
   const [scheduleRecipients, setScheduleRecipients] = useState("");
+
+  // Instant Send Now Modal State
+  const [sendModalReport, setSendModalReport] = useState(null);
+  const [sendRecipients, setSendRecipients] = useState("");
+  const [sendFormat, setSendFormat] = useState("html");
+  const [sending, setSending] = useState(false);
+
+  // Version History Modal State
+  const [versionModalReport, setVersionModalReport] = useState(null);
+  const [versionsList, setVersionsList] = useState([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  const [newVersionSummary, setNewVersionSummary] = useState("");
+  const [publishingVersion, setPublishingVersion] = useState(false);
 
   async function loadReports() {
     setLoading(true);
@@ -130,6 +144,71 @@ export default function ReportsManagerView({ onNavigate, addToast }) {
     } catch (err) {
       addToast?.(err.message || "Failed to update schedule", "error");
     }
+  }
+
+  async function handleSendReportNow(e) {
+    e?.preventDefault();
+    if (!sendModalReport) return;
+    setSending(true);
+    try {
+      const recipientList = sendRecipients.split(",").map(s => s.trim()).filter(Boolean);
+      const res = await api(`/api/reports/${sendModalReport.id}/send-now`, {
+        method: "POST",
+        body: JSON.stringify({
+          recipients: recipientList.length > 0 ? recipientList : ["executives@company.com"],
+          format: sendFormat
+        })
+      });
+      addToast?.(res.message || "Report dispatched successfully!", "success");
+      setSendModalReport(null);
+      setSendRecipients("");
+    } catch (err) {
+      addToast?.(err.message || "Failed to dispatch report", "error");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function openVersionsModal(rep) {
+    setVersionModalReport(rep);
+    setVersionsLoading(true);
+    try {
+      const data = await api(`/api/reports/${rep.id}/versions`);
+      setVersionsList(Array.isArray(data) ? data : []);
+    } catch {
+      setVersionsList([]);
+    } finally {
+      setVersionsLoading(false);
+    }
+  }
+
+  async function handlePublishNewVersion(e) {
+    e?.preventDefault();
+    if (!versionModalReport || !newVersionSummary.trim()) return;
+    setPublishingVersion(true);
+    try {
+      const res = await api(`/api/reports/${versionModalReport.id}/versions`, {
+        method: "POST",
+        body: JSON.stringify({
+          change_summary: newVersionSummary.trim(),
+          layout: { pages: versionModalReport.pages || [] }
+        })
+      });
+      addToast?.(res.message || "New report version published!", "success");
+      setNewVersionSummary("");
+      const data = await api(`/api/reports/${versionModalReport.id}/versions`);
+      setVersionsList(Array.isArray(data) ? data : []);
+    } catch (err) {
+      addToast?.(err.message || "Failed to publish version", "error");
+    } finally {
+      setPublishingVersion(false);
+    }
+  }
+
+  function openExecutiveDeck(rep) {
+    const ds = rep.dataset_id || "demo-sales";
+    const url = `/api/reports/${rep.id}/executive-html?dataset_id=${encodeURIComponent(ds)}`;
+    window.open(url, "_blank");
   }
 
   const filteredReports = reports.filter(r =>
@@ -250,7 +329,7 @@ export default function ReportsManagerView({ onNavigate, addToast }) {
                     {rep.created_at ? new Date(rep.created_at).toLocaleDateString() : "Active"}
                   </td>
                   <td style={{ textAlign: "right" }}>
-                    <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
+                    <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end", alignItems: "center" }}>
                       <button
                         className="saas-action-btn primary"
                         style={{ padding: "4px 10px", fontSize: "12px" }}
@@ -258,6 +337,33 @@ export default function ReportsManagerView({ onNavigate, addToast }) {
                         title="Edit in Power BI Studio"
                       >
                         Design <ArrowRight size={13} />
+                      </button>
+                      <button
+                        className="saas-action-btn secondary"
+                        style={{ padding: "4px 9px", fontSize: "11px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                        onClick={() => openExecutiveDeck(rep)}
+                        title="Open Executive Briefing Deck (High-res HTML for Print/PDF)"
+                      >
+                        <Eye size={13} /> Deck
+                      </button>
+                      <button
+                        className="icon-action"
+                        style={{ padding: "6px" }}
+                        onClick={() => {
+                          setSendModalReport(rep);
+                          setSendRecipients("");
+                        }}
+                        title="Instant Dispatch Report via Email"
+                      >
+                        <Send size={14} />
+                      </button>
+                      <button
+                        className="icon-action"
+                        style={{ padding: "6px" }}
+                        onClick={() => openVersionsModal(rep)}
+                        title="Version History & Snapshots"
+                      >
+                        <History size={14} />
                       </button>
                       <button
                         className="icon-action"
@@ -461,6 +567,131 @@ export default function ReportsManagerView({ onNavigate, addToast }) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Instant Send Now Modal */}
+      {sendModalReport && (
+        <div className="saas-modal-backdrop" onClick={() => setSendModalReport(null)}>
+          <div className="saas-modal" onClick={e => e.stopPropagation()}>
+            <div className="saas-modal-header">
+              <h3>Instant Dispatch: {sendModalReport.title}</h3>
+              <button className="text-button" onClick={() => setSendModalReport(null)}><X size={18} /></button>
+            </div>
+            <form onSubmit={handleSendReportNow}>
+              <div className="saas-modal-body">
+                <p style={{ margin: "0 0 16px 0", color: "#a49d89", fontSize: "13px" }}>
+                  Instantly compile and transmit verified performance briefings directly to executives or team stakeholders.
+                </p>
+                <div className="saas-form-group">
+                  <label>Recipient Emails (comma separated) *</label>
+                  <input
+                    type="text"
+                    className="saas-input"
+                    placeholder="cfo@company.com, stakeholders@company.com"
+                    value={sendRecipients}
+                    onChange={e => setSendRecipients(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="saas-form-group">
+                  <label>Export & Presentation Format</label>
+                  <select
+                    className="saas-select"
+                    value={sendFormat}
+                    onChange={e => setSendFormat(e.target.value)}
+                  >
+                    <option value="html">Interactive HTML Briefing (Print/PDF Ready)</option>
+                    <option value="excel">Excel Multi-Tab Workbook (.xlsx)</option>
+                    <option value="csv">Standard Tabular CSV (.csv)</option>
+                  </select>
+                </div>
+              </div>
+              <div className="saas-modal-footer">
+                <button type="button" className="saas-action-btn secondary" onClick={() => setSendModalReport(null)}>
+                  Cancel
+                </button>
+                <button type="submit" className="saas-action-btn primary" disabled={sending}>
+                  {sending ? "Dispatching..." : "Transmit Report"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Version History Modal */}
+      {versionModalReport && (
+        <div className="saas-modal-backdrop" onClick={() => setVersionModalReport(null)}>
+          <div className="saas-modal" style={{ maxWidth: "620px" }} onClick={e => e.stopPropagation()}>
+            <div className="saas-modal-header">
+              <h3>Version History: {versionModalReport.title}</h3>
+              <button className="text-button" onClick={() => setVersionModalReport(null)}><X size={18} /></button>
+            </div>
+            <div className="saas-modal-body">
+              {/* Publish Snapshot Box */}
+              <form onSubmit={handlePublishNewVersion} style={{ marginBottom: "20px", padding: "12px 14px", background: "rgba(255,255,255,0.03)", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <strong style={{ fontSize: "13px", color: "#fff", display: "block", marginBottom: "6px" }}>Publish Immutable Version Snapshot</strong>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <input
+                    type="text"
+                    className="saas-input"
+                    placeholder="Change summary (e.g. Added Q3 Target KPI and regional breakdown)"
+                    value={newVersionSummary}
+                    onChange={e => setNewVersionSummary(e.target.value)}
+                    required
+                  />
+                  <button type="submit" className="saas-action-btn primary" disabled={publishingVersion || !newVersionSummary.trim()}>
+                    {publishingVersion ? "Publishing..." : "Publish"}
+                  </button>
+                </div>
+              </form>
+
+              {/* Version History Timeline */}
+              <strong style={{ fontSize: "12px", color: "#8a8370", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: "10px" }}>
+                Historical Snapshots ({versionsList.length})
+              </strong>
+              {versionsLoading ? (
+                <div style={{ padding: "20px", textAlign: "center", color: "#8a8370" }}>Loading version history...</div>
+              ) : versionsList.length === 0 ? (
+                <div style={{ padding: "20px", textAlign: "center", color: "#8a8370" }}>
+                  No published versions recorded yet. Publish a snapshot above to track immutable report revisions.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "280px", overflowY: "auto" }}>
+                  {versionsList.map(v => (
+                    <div
+                      key={v.id}
+                      style={{
+                        padding: "10px 14px",
+                        background: "rgba(255,255,255,0.02)",
+                        border: "1px solid rgba(255,255,255,0.06)",
+                        borderRadius: "6px",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center"
+                      }}
+                    >
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <span className="saas-badge primary">{v.title || `v${v.version_number}.0`}</span>
+                          <strong style={{ fontSize: "13px", color: "#fff" }}>{v.change_summary}</strong>
+                        </div>
+                      </div>
+                      <small style={{ color: "#8a8370", fontSize: "11px" }}>
+                        {new Date(v.created_at).toLocaleString()}
+                      </small>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="saas-modal-footer">
+              <button type="button" className="saas-action-btn secondary" onClick={() => setVersionModalReport(null)}>
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

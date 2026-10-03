@@ -18,7 +18,14 @@ import {
   Eye,
   FileSpreadsheet,
   ShieldCheck,
-  Activity
+  Activity,
+  Undo2,
+  Redo2,
+  Play,
+  Save,
+  Layers,
+  ListOrdered,
+  X
 } from "lucide-react";
 import { api } from "../../lib/api";
 
@@ -89,6 +96,116 @@ export default function DataCleaningStudio({
   const [calcOp, setCalcOp] = useState("+");
   const [calcCol2, setCalcCol2] = useState("");
   const [calcConst, setCalcConst] = useState("");
+
+  // Pipeline Studio State & Undo/Redo Stacks
+  const [pipelineSteps, setPipelineSteps] = useState([]);
+  const [undoStack, setUndoStack] = useState([]);
+  const [redoStack, setRedoStack] = useState([]);
+  const [savedRecipes, setSavedRecipes] = useState([]);
+  const [selectedRecipeId, setSelectedRecipeId] = useState("");
+  const [newRecipeName, setNewRecipeName] = useState("");
+  const [savingRecipe, setSavingRecipe] = useState(false);
+  const [executingPipeline, setExecutingPipeline] = useState(false);
+
+  // New step builder in pipeline
+  const [stepType, setStepType] = useState("filter_rows");
+  const [stepCol, setStepCol] = useState("");
+  const [stepParam1, setStepParam1] = useState("");
+  const [stepParam2, setStepParam2] = useState("");
+
+  async function loadRecipes() {
+    try {
+      const data = await api("/api/datasets/recipes");
+      setSavedRecipes(Array.isArray(data) ? data : []);
+    } catch {
+      setSavedRecipes([]);
+    }
+  }
+
+  useEffect(() => {
+    loadRecipes();
+  }, []);
+
+  function pushPipelineStep(newStep) {
+    setUndoStack(prev => [...prev, pipelineSteps]);
+    setRedoStack([]);
+    setPipelineSteps(prev => [...prev, newStep]);
+  }
+
+  function handleUndo() {
+    if (undoStack.length === 0) return;
+    const previous = undoStack[undoStack.length - 1];
+    setUndoStack(prev => prev.slice(0, -1));
+    setRedoStack(prev => [...prev, pipelineSteps]);
+    setPipelineSteps(previous);
+  }
+
+  function handleRedo() {
+    if (redoStack.length === 0) return;
+    const next = redoStack[redoStack.length - 1];
+    setRedoStack(prev => prev.slice(0, -1));
+    setUndoStack(prev => [...prev, pipelineSteps]);
+    setPipelineSteps(next);
+  }
+
+  function handleRemoveStep(index) {
+    setUndoStack(prev => [...prev, pipelineSteps]);
+    setRedoStack([]);
+    setPipelineSteps(prev => prev.filter((_, i) => i !== index));
+  }
+
+  async function handleExecutePipeline() {
+    if (pipelineSteps.length === 0) {
+      addToast?.("Add at least one transformation step to the pipeline.", "error");
+      return;
+    }
+    setExecutingPipeline(true);
+    try {
+      const res = await api(`/api/datasets/${encodeURIComponent(datasetId)}/transform`, {
+        method: "POST",
+        body: JSON.stringify({ operations: pipelineSteps })
+      });
+      addToast?.(`Pipeline executed! ${res.actions?.length || pipelineSteps.length} operations applied.`, "success");
+      onDatasetUpdated?.();
+      fetchHistory();
+    } catch (err) {
+      addToast?.(err.message || "Failed to execute transformation pipeline", "error");
+    } finally {
+      setExecutingPipeline(false);
+    }
+  }
+
+  async function handleSaveRecipe(e) {
+    e?.preventDefault();
+    if (!newRecipeName.trim() || pipelineSteps.length === 0) return;
+    setSavingRecipe(true);
+    try {
+      await api("/api/datasets/recipes", {
+        method: "POST",
+        body: JSON.stringify({
+          name: newRecipeName.trim(),
+          description: `Reusable pipeline with ${pipelineSteps.length} operations`,
+          operations: pipelineSteps
+        })
+      });
+      addToast?.(`Recipe "${newRecipeName}" saved successfully!`, "success");
+      setNewRecipeName("");
+      loadRecipes();
+    } catch (err) {
+      addToast?.(err.message || "Failed to save recipe", "error");
+    } finally {
+      setSavingRecipe(false);
+    }
+  }
+
+  function handleLoadRecipe(recipeId) {
+    const r = savedRecipes.find(x => x.id === recipeId);
+    if (!r) return;
+    setUndoStack(prev => [...prev, pipelineSteps]);
+    setRedoStack([]);
+    setPipelineSteps(r.operations || []);
+    addToast?.(`Loaded ${r.operations?.length || 0} steps from "${r.name}"`, "success");
+  }
 
   // Fetch transformation history
   async function fetchHistory() {
@@ -221,6 +338,7 @@ export default function DataCleaningStudio({
           </div>
           {[
             { id: "deep_quality", label: "Quality & Drift Radar", icon: ShieldCheck, badge: "RADAR" },
+            { id: "pipeline", label: "Transformation Pipeline", icon: Layers, badge: "RECIPE" },
             { id: "quick_fixes", label: "Suggested Fixes", icon: Sparkles, badge: "AI" },
             { id: "rename", label: "Rename Column", icon: Edit2 },
             { id: "remove", label: "Remove Column", icon: Trash2 },
@@ -409,6 +527,403 @@ export default function DataCleaningStudio({
               ) : (
                 <p style={{ color: "#94a3b8" }}>No deep quality analysis available.</p>
               )}
+            </div>
+          )}
+
+          {/* Transformation Pipeline Studio */}
+          {activeTool === "pipeline" && (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", flexWrap: "wrap", gap: "10px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Layers size={20} color="#e6c348" />
+                  <h3 style={{ fontSize: "16px", color: "#f8fafc", margin: 0 }}>Visual Transformation Pipeline Studio</h3>
+                </div>
+
+                {/* Toolbar: Undo, Redo, Clear, Execute */}
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <button
+                    type="button"
+                    className="enterprise-btn secondary"
+                    onClick={handleUndo}
+                    disabled={undoStack.length === 0}
+                    title="Undo last step change"
+                    style={{ padding: "5px 10px", fontSize: "12px", display: "flex", alignItems: "center", gap: "4px" }}
+                  >
+                    <Undo2 size={13} /> Undo
+                  </button>
+                  <button
+                    type="button"
+                    className="enterprise-btn secondary"
+                    onClick={handleRedo}
+                    disabled={redoStack.length === 0}
+                    title="Redo step change"
+                    style={{ padding: "5px 10px", fontSize: "12px", display: "flex", alignItems: "center", gap: "4px" }}
+                  >
+                    <Redo2 size={13} /> Redo
+                  </button>
+                  <button
+                    type="button"
+                    className="enterprise-btn secondary"
+                    onClick={() => {
+                      setUndoStack(prev => [...prev, pipelineSteps]);
+                      setRedoStack([]);
+                      setPipelineSteps([]);
+                    }}
+                    disabled={pipelineSteps.length === 0}
+                    title="Clear all staged steps"
+                    style={{ padding: "5px 10px", fontSize: "12px", color: "#f87171" }}
+                  >
+                    <Trash2 size={13} /> Clear
+                  </button>
+                  <button
+                    type="button"
+                    className="enterprise-btn primary"
+                    onClick={handleExecutePipeline}
+                    disabled={executingPipeline || pipelineSteps.length === 0}
+                    style={{ padding: "5px 14px", fontSize: "12px", display: "flex", alignItems: "center", gap: "6px" }}
+                  >
+                    {executingPipeline ? (
+                      <>
+                        <RefreshCw size={13} className="spin-fast" /> Executing Pipeline...
+                      </>
+                    ) : (
+                      <>
+                        <Play size={13} fill="currentColor" /> Apply Pipeline ({pipelineSteps.length})
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <p style={{ fontSize: "13px", color: "#94a3b8", marginBottom: "16px" }}>
+                Construct multi-step data preparation pipelines with interactive preview, step-by-step undo/redo, and reusable recipe templates.
+              </p>
+
+              {/* Recipe Preset Loader & Saver */}
+              <div style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: "12px",
+                padding: "10px 14px",
+                background: "rgba(255,255,255,0.03)",
+                borderRadius: "8px",
+                border: "1px solid rgba(255,255,255,0.08)",
+                marginBottom: "18px"
+              }}>
+                {/* Load Recipe */}
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ fontSize: "12px", color: "#cbd5e1" }}>Pre-built Recipes:</span>
+                  <select
+                    className="saas-select"
+                    style={{ fontSize: "12px", padding: "4px 8px", minWidth: "180px" }}
+                    value={selectedRecipeId}
+                    onChange={e => {
+                      setSelectedRecipeId(e.target.value);
+                      if (e.target.value) handleLoadRecipe(e.target.value);
+                    }}
+                  >
+                    <option value="">Load saved recipe...</option>
+                    {savedRecipes.map(r => (
+                      <option key={r.id} value={r.id}>
+                        {r.name} ({r.operations?.length || 0} steps)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Save Current Pipeline as Recipe */}
+                <form onSubmit={handleSaveRecipe} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <input
+                    type="text"
+                    className="saas-input"
+                    placeholder="Recipe name (e.g. Sales Sanitization)"
+                    value={newRecipeName}
+                    onChange={e => setNewRecipeName(e.target.value)}
+                    style={{ fontSize: "12px", padding: "4px 8px", width: "220px" }}
+                    required
+                  />
+                  <button
+                    type="submit"
+                    className="enterprise-btn secondary"
+                    disabled={savingRecipe || !newRecipeName.trim() || pipelineSteps.length === 0}
+                    style={{ fontSize: "12px", padding: "4px 10px", display: "flex", alignItems: "center", gap: "4px" }}
+                  >
+                    <Save size={13} /> Save Recipe
+                  </button>
+                </form>
+              </div>
+
+              {/* Staged Pipeline Steps List */}
+              <div style={{ marginBottom: "20px" }}>
+                <div style={{ fontSize: "12px", fontWeight: "600", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "8px" }}>
+                  Staged Pipeline Steps ({pipelineSteps.length})
+                </div>
+
+                {pipelineSteps.length === 0 ? (
+                  <div style={{
+                    padding: "24px",
+                    textAlign: "center",
+                    background: "rgba(255,255,255,0.02)",
+                    border: "1px dashed rgba(255,255,255,0.12)",
+                    borderRadius: "8px",
+                    color: "#94a3b8",
+                    fontSize: "13px"
+                  }}>
+                    No transformation steps staged yet. Add an operation below or load a recipe to build your transformation pipeline.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    {pipelineSteps.map((step, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          padding: "10px 14px",
+                          background: "rgba(255,255,255,0.03)",
+                          border: "1px solid rgba(255,255,255,0.08)",
+                          borderRadius: "6px"
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                          <span style={{
+                            width: "22px",
+                            height: "22px",
+                            borderRadius: "50%",
+                            background: "#e6c348",
+                            color: "#000",
+                            fontSize: "11px",
+                            fontWeight: "700",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center"
+                          }}>
+                            {idx + 1}
+                          </span>
+                          <span className="saas-badge primary" style={{ textTransform: "uppercase", fontSize: "10.5px" }}>
+                            {step.type?.replace("_", " ")}
+                          </span>
+                          <span style={{ fontSize: "13px", color: "#f8fafc" }}>
+                            {step.type === "filter_rows" && `Filter '${step.column}' ${step.operator} '${step.value}'`}
+                            {step.type === "handle_missing" && `Impute '${step.column}' using strategy: ${step.strategy} ${step.strategy === "constant" ? `('${step.constant_value}')` : ""}`}
+                            {step.type === "rename_column" && `Rename '${step.old_name}' → '${step.new_name}'`}
+                            {step.type === "remove_column" && `Drop column '${step.column}'`}
+                            {step.type === "replace_value" && `Replace '${step.find}' with '${step.replace}' in '${step.column}'`}
+                            {step.type === "convert_type" && `Cast '${step.column}' to ${step.target_type}`}
+                            {step.type === "remove_duplicates" && `Remove duplicate records across dataset`}
+                            {step.type === "calculated_column" && `Calculate new column '${step.new_column}'`}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          className="icon-action"
+                          onClick={() => handleRemoveStep(idx)}
+                          title="Remove this step"
+                          style={{ color: "#94a3b8", padding: "4px" }}
+                        >
+                          <X size={15} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Add New Step Form Box */}
+              <div style={{
+                padding: "16px",
+                background: "rgba(255,255,255,0.02)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                borderRadius: "10px"
+              }}>
+                <div style={{ fontSize: "13px", fontWeight: "600", color: "#f8fafc", marginBottom: "12px", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <Plus size={15} color="#e6c348" /> Add Transformation Step to Pipeline
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "180px 1fr 1fr", gap: "10px", alignItems: "end", marginBottom: "12px" }}>
+                  <div className="saas-form-group" style={{ margin: 0 }}>
+                    <label style={{ fontSize: "11px" }}>Operation</label>
+                    <select
+                      className="saas-select"
+                      style={{ fontSize: "12px" }}
+                      value={stepType}
+                      onChange={e => setStepType(e.target.value)}
+                    >
+                      <option value="filter_rows">Filter Rows</option>
+                      <option value="handle_missing">Handle Missing Values</option>
+                      <option value="rename_column">Rename Column</option>
+                      <option value="replace_value">Replace Values</option>
+                      <option value="remove_column">Remove Column</option>
+                      <option value="convert_type">Convert Type</option>
+                      <option value="remove_duplicates">Remove Duplicates</option>
+                    </select>
+                  </div>
+
+                  <div className="saas-form-group" style={{ margin: 0 }}>
+                    <label style={{ fontSize: "11px" }}>Target Column</label>
+                    <select
+                      className="saas-select"
+                      style={{ fontSize: "12px" }}
+                      value={stepCol || (schema[0]?.name || "")}
+                      onChange={e => setStepCol(e.target.value)}
+                    >
+                      {schema.map(c => (
+                        <option key={c.name} value={c.name}>{c.name} ({c.semantic_type || c.inferred_type})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Dynamic Parameter 1 */}
+                  {stepType === "filter_rows" && (
+                    <div className="saas-form-group" style={{ margin: 0 }}>
+                      <label style={{ fontSize: "11px" }}>Filter Condition & Value</label>
+                      <div style={{ display: "flex", gap: "6px" }}>
+                        <select
+                          className="saas-select"
+                          style={{ width: "90px", fontSize: "12px" }}
+                          value={stepParam1 || "gt"}
+                          onChange={e => setStepParam1(e.target.value)}
+                        >
+                          <option value="gt">&gt; Greater</option>
+                          <option value="lt">&lt; Less</option>
+                          <option value="eq">== Equal</option>
+                          <option value="contains">Contains</option>
+                        </select>
+                        <input
+                          type="text"
+                          className="saas-input"
+                          style={{ fontSize: "12px" }}
+                          placeholder="Value..."
+                          value={stepParam2}
+                          onChange={e => setStepParam2(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {stepType === "handle_missing" && (
+                    <div className="saas-form-group" style={{ margin: 0 }}>
+                      <label style={{ fontSize: "11px" }}>Imputation Strategy</label>
+                      <select
+                        className="saas-select"
+                        style={{ fontSize: "12px" }}
+                        value={stepParam1 || "median"}
+                        onChange={e => setStepParam1(e.target.value)}
+                      >
+                        <option value="median">Median Value</option>
+                        <option value="mean">Mean Value</option>
+                        <option value="mode">Most Frequent (Mode)</option>
+                        <option value="constant">Custom Constant</option>
+                        <option value="drop">Drop Null Rows</option>
+                      </select>
+                    </div>
+                  )}
+
+                  {stepType === "rename_column" && (
+                    <div className="saas-form-group" style={{ margin: 0 }}>
+                      <label style={{ fontSize: "11px" }}>New Column Name</label>
+                      <input
+                        type="text"
+                        className="saas-input"
+                        style={{ fontSize: "12px" }}
+                        placeholder="new_column_name"
+                        value={stepParam1}
+                        onChange={e => setStepParam1(e.target.value)}
+                      />
+                    </div>
+                  )}
+
+                  {stepType === "replace_value" && (
+                    <div className="saas-form-group" style={{ margin: 0 }}>
+                      <label style={{ fontSize: "11px" }}>Find & Replace With</label>
+                      <div style={{ display: "flex", gap: "6px" }}>
+                        <input
+                          type="text"
+                          className="saas-input"
+                          style={{ fontSize: "12px" }}
+                          placeholder="Find..."
+                          value={stepParam1}
+                          onChange={e => setStepParam1(e.target.value)}
+                        />
+                        <input
+                          type="text"
+                          className="saas-input"
+                          style={{ fontSize: "12px" }}
+                          placeholder="Replace with..."
+                          value={stepParam2}
+                          onChange={e => setStepParam2(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {stepType === "convert_type" && (
+                    <div className="saas-form-group" style={{ margin: 0 }}>
+                      <label style={{ fontSize: "11px" }}>Target Data Type</label>
+                      <select
+                        className="saas-select"
+                        style={{ fontSize: "12px" }}
+                        value={stepParam1 || "numeric"}
+                        onChange={e => setStepParam1(e.target.value)}
+                      >
+                        <option value="numeric">Numeric (Float/Int)</option>
+                        <option value="datetime">Datetime (Timestamp)</option>
+                        <option value="string">String (Text)</option>
+                      </select>
+                    </div>
+                  )}
+
+                  {stepType === "remove_column" && (
+                    <div style={{ fontSize: "12px", color: "#94a3b8" }}>
+                      Column will be dropped from resulting dataset.
+                    </div>
+                  )}
+
+                  {stepType === "remove_duplicates" && (
+                    <div style={{ fontSize: "12px", color: "#94a3b8" }}>
+                      Identical duplicate rows will be pruned.
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  className="enterprise-btn primary"
+                  onClick={() => {
+                    const col = stepCol || (schema[0]?.name || "");
+                    let newStep = null;
+                    if (stepType === "filter_rows") {
+                      newStep = { type: "filter_rows", column: col, operator: stepParam1 || "gt", value: stepParam2 || "0" };
+                    } else if (stepType === "handle_missing") {
+                      newStep = { type: "handle_missing", column: col, strategy: stepParam1 || "median", constant_value: stepParam2 };
+                    } else if (stepType === "rename_column") {
+                      if (!stepParam1.trim()) return addToast?.("Please specify a new column name.", "error");
+                      newStep = { type: "rename_column", old_name: col, new_name: stepParam1.trim() };
+                    } else if (stepType === "remove_column") {
+                      newStep = { type: "remove_column", column: col };
+                    } else if (stepType === "replace_value") {
+                      newStep = { type: "replace_value", column: col, find: stepParam1, replace: stepParam2 };
+                    } else if (stepType === "convert_type") {
+                      newStep = { type: "convert_type", column: col, target_type: stepParam1 || "numeric" };
+                    } else if (stepType === "remove_duplicates") {
+                      newStep = { type: "remove_duplicates" };
+                    }
+
+                    if (newStep) {
+                      pushPipelineStep(newStep);
+                      setStepParam1("");
+                      setStepParam2("");
+                      addToast?.("Step added to pipeline recipe.", "success");
+                    }
+                  }}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "12px", padding: "6px 14px" }}
+                >
+                  <Plus size={14} /> Stage Step in Recipe
+                </button>
+              </div>
             </div>
           )}
 

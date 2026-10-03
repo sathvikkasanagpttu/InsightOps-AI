@@ -13,6 +13,16 @@ export default function AlertsCenterView({ datasetId, addToast }) {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // Integrations & Dispatch Test State
+  const [historyLogs, setHistoryLogs] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [selectedRuleId, setSelectedRuleId] = useState("");
+  const [slackUrl, setSlackUrl] = useState("https://hooks.slack.com/services/T000/B000/XXXXXX");
+  const [customWebhookUrl, setCustomWebhookUrl] = useState("https://api.yourdomain.com/webhooks/alerts");
+  const [dispatchEmail, setDispatchEmail] = useState("alerts-admin@company.com");
+  const [dispatching, setDispatching] = useState(false);
+  const [dispatchResult, setDispatchResult] = useState(null);
+
   // Create rule modal
   const [modalOpen, setModalOpen] = useState(false);
   const [name, setName] = useState("");
@@ -30,7 +40,11 @@ export default function AlertsCenterView({ datasetId, addToast }) {
         api("/api/alerts").catch(() => []),
         api(`/api/alerts/notifications?dataset_id=${encodeURIComponent(datasetId || "demo-sales")}`).catch(() => [])
       ]);
-      setRules(Array.isArray(rulesData) ? rulesData : []);
+      const validRules = Array.isArray(rulesData) ? rulesData : [];
+      setRules(validRules);
+      if (validRules.length > 0 && !selectedRuleId) {
+        setSelectedRuleId(validRules[0].id);
+      }
       setNotifications(Array.isArray(notifData) ? notifData : []);
     } catch (err) {
       console.warn("Error loading alerts data:", err);
@@ -39,9 +53,49 @@ export default function AlertsCenterView({ datasetId, addToast }) {
     }
   }
 
+  async function loadHistoryLogs() {
+    setHistoryLoading(true);
+    try {
+      const logs = await api("/api/alerts/history").catch(() => []);
+      setHistoryLogs(Array.isArray(logs) ? logs : []);
+    } catch (err) {
+      console.warn("Error loading alert history:", err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
   useEffect(() => {
     loadAlertsData();
+    loadHistoryLogs();
   }, [datasetId, activeWorkspace]);
+
+  async function handleTriggerDispatch(e) {
+    e?.preventDefault();
+    if (!selectedRuleId) {
+      addToast?.("Please select an alert rule to dispatch.", "error");
+      return;
+    }
+    setDispatching(true);
+    setDispatchResult(null);
+    try {
+      const res = await api(`/api/alerts/${selectedRuleId}/dispatch`, {
+        method: "POST",
+        body: JSON.stringify({
+          slack_webhook_url: slackUrl.trim() || undefined,
+          custom_webhook_url: customWebhookUrl.trim() || undefined,
+          email: dispatchEmail.trim() || undefined
+        })
+      });
+      setDispatchResult(res);
+      addToast?.("Alert notification dispatched across configured channels!", "success");
+      loadHistoryLogs();
+    } catch (err) {
+      addToast?.(err.message || "Failed to dispatch alert", "error");
+    } finally {
+      setDispatching(false);
+    }
+  }
 
   async function handleToggleRule(ruleId) {
     try {
@@ -133,6 +187,13 @@ export default function AlertsCenterView({ datasetId, addToast }) {
           style={{ padding: "10px 18px", background: "none", border: "none", cursor: "pointer", color: activeTab === "rules" ? "#e6c348" : "#a49d89", fontWeight: "600" }}
         >
           Monitoring Rules ({rules.length})
+        </button>
+        <button
+          className={activeTab === "integrations" ? "selected" : ""}
+          onClick={() => setActiveTab("integrations")}
+          style={{ padding: "10px 18px", background: "none", border: "none", cursor: "pointer", color: activeTab === "integrations" ? "#e6c348" : "#a49d89", fontWeight: "600" }}
+        >
+          Integrations & Dispatch Audit ({historyLogs.length})
         </button>
       </div>
 
@@ -257,6 +318,177 @@ export default function AlertsCenterView({ datasetId, addToast }) {
               </tbody>
             </table>
           )}
+        </div>
+      )}
+
+      {/* Tab 3: Integrations & Dispatch Audit */}
+      {activeTab === "integrations" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          {/* Channel Dispatch Test Card */}
+          <div className="saas-panel">
+            <div className="saas-panel-header">
+              <h2><Zap size={18} color="#e6c348" /> Multi-Channel Dispatcher & Webhook Studio</h2>
+              <span style={{ fontSize: "12px", color: "#8a8370" }}>Enterprise Real-time Notification Engine</span>
+            </div>
+
+            <form onSubmit={handleTriggerDispatch} style={{ padding: "16px 20px" }}>
+              <p style={{ margin: "0 0 16px 0", color: "#a49d89", fontSize: "13px" }}>
+                Test multi-channel notifications across Slack Incoming Webhooks, Custom REST Webhooks (HMAC-SHA256 authenticated), and Transactional Email.
+              </p>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "16px" }}>
+                <div className="saas-form-group">
+                  <label>Triggering Alert Rule</label>
+                  <select
+                    className="saas-select"
+                    value={selectedRuleId}
+                    onChange={e => setSelectedRuleId(e.target.value)}
+                  >
+                    {rules.map(r => (
+                      <option key={r.id} value={r.id}>
+                        {r.name} ({r.metric_column} {r.condition} {r.threshold_value})
+                      </option>
+                    ))}
+                    {rules.length === 0 && <option value="">No rules available (Create one first)</option>}
+                  </select>
+                </div>
+
+                <div className="saas-form-group">
+                  <label>Target Email Address</label>
+                  <input
+                    type="email"
+                    className="saas-input"
+                    value={dispatchEmail}
+                    onChange={e => setDispatchEmail(e.target.value)}
+                    placeholder="devops@company.com"
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "20px" }}>
+                <div className="saas-form-group">
+                  <label>Slack Incoming Webhook URL</label>
+                  <input
+                    type="text"
+                    className="saas-input"
+                    value={slackUrl}
+                    onChange={e => setSlackUrl(e.target.value)}
+                    placeholder="https://hooks.slack.com/services/..."
+                  />
+                </div>
+
+                <div className="saas-form-group">
+                  <label>Custom Webhook Endpoint (HMAC-Signed)</label>
+                  <input
+                    type="text"
+                    className="saas-input"
+                    value={customWebhookUrl}
+                    onChange={e => setCustomWebhookUrl(e.target.value)}
+                    placeholder="https://api.yourdomain.com/webhooks/alerts"
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ fontSize: "12px", color: "#8a8370", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <ShieldAlert size={14} color="#10b981" />
+                  <span>Payloads include X-InsightOps-Signature (HMAC-SHA256) and ISO-8601 telemetry.</span>
+                </div>
+                <button
+                  type="submit"
+                  className="saas-action-btn primary"
+                  disabled={dispatching || !selectedRuleId}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}
+                >
+                  {dispatching ? (
+                    <>
+                      <RefreshCw size={14} className="spin" /> Dispatching Test...
+                    </>
+                  ) : (
+                    <>
+                      <Zap size={14} /> Dispatch Multi-Channel Test
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {dispatchResult && (
+                <div
+                  style={{
+                    marginTop: "16px",
+                    padding: "12px 16px",
+                    borderRadius: "8px",
+                    background: "rgba(16, 185, 129, 0.08)",
+                    border: "1px solid rgba(16, 185, 129, 0.2)",
+                    fontSize: "13px"
+                  }}
+                >
+                  <strong style={{ color: "#34d399", display: "block", marginBottom: "4px" }}>
+                    ✓ Notification Dispatch Completed:
+                  </strong>
+                  <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", color: "#cbd5e1" }}>
+                    <span>Slack: <strong style={{ color: "#fff" }}>{dispatchResult.slack_status}</strong></span>
+                    <span>Webhook: <strong style={{ color: "#fff" }}>{dispatchResult.webhook_status}</strong></span>
+                    <span>Email: <strong style={{ color: "#fff" }}>{dispatchResult.email_status}</strong></span>
+                    <span>Rule: <strong style={{ color: "#fff" }}>{dispatchResult.title}</strong></span>
+                  </div>
+                </div>
+              )}
+            </form>
+          </div>
+
+          {/* Real-time Delivery Audit History Table */}
+          <div className="saas-panel">
+            <div className="saas-panel-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h2>Delivery History & Audit Trail ({historyLogs.length})</h2>
+              <button className="icon-action" onClick={loadHistoryLogs} title="Refresh audit log">
+                <RefreshCw size={14} />
+              </button>
+            </div>
+
+            {historyLoading ? (
+              <div style={{ padding: "30px", textAlign: "center", color: "#8a8370" }}>Loading audit records...</div>
+            ) : historyLogs.length === 0 ? (
+              <div style={{ padding: "30px", textAlign: "center", color: "#8a8370" }}>
+                No notifications logged yet. Trigger a test dispatch above to see delivery logs.
+              </div>
+            ) : (
+              <table className="saas-table">
+                <thead>
+                  <tr>
+                    <th>Alert Title</th>
+                    <th>Channel</th>
+                    <th>Status</th>
+                    <th>HTTP Code</th>
+                    <th style={{ textAlign: "right" }}>Dispatched At</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {historyLogs.map(log => (
+                    <tr key={log.id}>
+                      <td style={{ fontWeight: "600", color: "#fff" }}>{log.title}</td>
+                      <td>
+                        <span className="saas-badge" style={{ textTransform: "uppercase", fontSize: "11px" }}>
+                          {log.channel}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={`saas-badge ${log.status === "delivered" ? "success" : (log.status === "failed" ? "critical" : "warning")}`}>
+                          {log.status}
+                        </span>
+                      </td>
+                      <td style={{ fontFamily: "monospace", fontSize: "12px", color: log.status_code === 200 ? "#34d399" : "#cbd5e1" }}>
+                        {log.status_code || "200"}
+                      </td>
+                      <td style={{ textAlign: "right", color: "#8a8370", fontSize: "12px" }}>
+                        {new Date(log.created_at).toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       )}
 
