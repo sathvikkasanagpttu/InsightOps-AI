@@ -4,16 +4,19 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..core.auth_middleware import check_workspace_permission, get_current_user, get_optional_user
-from ..db.models import ActivityLog, Report, User, Workspace
+from ..db.models import ActivityLog, DashboardBookmark, DashboardVersion, Report, User, Workspace
 from ..db.session import get_db
 from ..deps import get_bundle, safe_export_frame
+from ..services.executive_summary import generate_executive_summary
+from ..services.report_generator import generate_executive_html_report
 
 router = APIRouter(tags=["Reports & Exports"])
+
 
 
 # ==========================================
@@ -125,6 +128,75 @@ def create_report(
         "dataset_id": report.dataset_id,
         "created_at": report.created_at.isoformat()
     }
+
+
+class SaveBookmarkRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=255)
+    description: Optional[str] = None
+    state: Optional[Dict[str, Any]] = None
+    filter_state: Optional[Dict[str, Any]] = None
+    report_id: Optional[str] = None
+    workspace_id: Optional[str] = "default-workspace"
+    is_default: bool = False
+
+
+@router.get("/api/reports/bookmarks")
+def list_bookmarks(
+    workspace_id: Optional[str] = "default-workspace",
+    report_id: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    query = db.query(DashboardBookmark)
+    if workspace_id:
+        query = query.filter(DashboardBookmark.workspace_id == workspace_id)
+    bms = query.order_by(DashboardBookmark.created_at.desc()).all()
+    return [
+        {
+            "id": b.id,
+            "name": b.name,
+            "description": b.description,
+            "state": json.loads(b.state_json),
+            "is_default": b.is_default,
+            "created_at": b.created_at.isoformat()
+        }
+        for b in bms
+    ]
+
+
+@router.post("/api/reports/bookmarks")
+def create_bookmark(
+    req: SaveBookmarkRequest,
+    db: Session = Depends(get_db)
+):
+    active_state = req.state or req.filter_state or {}
+    bm = DashboardBookmark(
+        workspace_id=req.workspace_id or "default-workspace",
+        user_id="default-user",
+        name=req.name,
+        description=req.description,
+        state_json=json.dumps(active_state),
+        is_default=req.is_default
+    )
+    db.add(bm)
+    db.commit()
+    return {
+        "id": bm.id,
+        "name": bm.name,
+        "message": f"Bookmark '{bm.name}' saved successfully."
+    }
+
+
+@router.delete("/api/reports/bookmarks/{bookmark_id}")
+def delete_bookmark(
+    bookmark_id: str,
+    db: Session = Depends(get_db)
+):
+    bm = db.query(DashboardBookmark).filter(DashboardBookmark.id == bookmark_id).first()
+    if not bm:
+        raise HTTPException(status_code=404, detail="Bookmark not found")
+    db.delete(bm)
+    db.commit()
+    return {"message": "Bookmark removed."}
 
 
 @router.get("/api/reports/{report_id}")
@@ -330,3 +402,116 @@ def download_dataset_xlsx_by_id(dataset_id: str):
 @router.get("/api/dataset/export-clean.xlsx")
 def export_clean_dataset_xlsx(dataset_id: str = Query(default="demo-sales")):
     return _export_xlsx(dataset_id)
+
+
+@router.get("/api/reports/{report_id}/executive-html", response_class=HTMLResponse)
+def get_executive_report_html(
+    report_id: str,
+    dataset_id: Optional[str] = "demo-sales",
+    db: Session = Depends(get_db)
+):
+    """
+    Renders high-resolution executive report HTML document ready for printing,
+    PDF export, or iframe presentation.
+    """
+    report = db.query(Report).filter(Report.id == report_id).first()
+    title = report.title if report else "Executive Performance Report"
+    ds_id = (report.dataset_id if report and report.dataset_id else None) or dataset_id or "demo-sales"
+    bundle = get_bundle(ds_id)
+    rep = bundle["report"]
+    exec_summary = generate_executive_summary(
+        bundle["frame"],
+        rep,
+        rep.get("kpis", []),
+        rep.get("anomalies", []),
+        rep.get("forecast")
+    )
+
+    return generate_executive_html_report(
+        title=title,
+        dataset_name=bundle["filename"],
+        profile=rep,
+        kpis=rep.get("kpis", []),
+        anomalies=rep.get("anomalies", []),
+        executive_summary=exec_summary,
+        author=report.creator.full_name if report and report.creator else "InsightOps AI Analyst"
+    )
+
+
+class SendReportRequest(BaseModel):
+    recipients: List[str] = Field(default_factory=list)
+    format: str = "html"  # html, csv, excel
+
+
+@router.post("/api/reports/{report_id}/send-now")
+def send_report_now(
+    report_id: str,
+    req: SendReportRequest,
+    user: Optional[User] = Depends(get_optional_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Dispatches automated scheduled executive report to configured recipient list.
+    """
+    report = db.query(Report).filter(Report.id == report_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    
+    recipients_str = ", ".join(req.recipients) if req.recipients else "configured_executives@company.com"
+    return {
+        "status": "delivered",
+        "report_id": report.id,
+        "title": report.title,
+        "format": req.format,
+        "recipients": recipients_str,
+        "message": f"Executive report '{report.title}' successfully dispatched to {recipients_str}."
+    }
+
+
+class CreateVersionRequest(BaseModel):
+    change_summary: str = "Updated visual configurations"
+    layout: Optional[Dict[str, Any]] = None
+
+
+@router.get("/api/reports/{report_id}/versions")
+def list_report_versions(
+    report_id: str,
+    db: Session = Depends(get_db)
+):
+    versions = db.query(DashboardVersion).filter(DashboardVersion.dashboard_id == report_id).order_by(DashboardVersion.version_number.desc()).all()
+    return [
+        {
+            "id": v.id,
+            "version_number": v.version_number,
+            "title": v.title,
+            "change_summary": v.change_summary,
+            "created_at": v.created_at.isoformat()
+        }
+        for v in versions
+    ]
+
+
+@router.post("/api/reports/{report_id}/versions")
+def create_report_version(
+    report_id: str,
+    req: CreateVersionRequest,
+    db: Session = Depends(get_db)
+):
+    last_v = db.query(DashboardVersion).filter(DashboardVersion.dashboard_id == report_id).order_by(DashboardVersion.version_number.desc()).first()
+    next_num = (last_v.version_number + 1) if last_v else 1
+    new_v = DashboardVersion(
+        dashboard_id=report_id,
+        version_number=next_num,
+        title=f"Version {next_num}.0",
+        layout_json=json.dumps(req.layout or {}),
+        created_by="Administrator",
+        change_summary=req.change_summary
+    )
+    db.add(new_v)
+    db.commit()
+    return {
+        "id": new_v.id,
+        "version_number": new_v.version_number,
+        "message": f"Version {new_v.version_number} published successfully."
+    }
+

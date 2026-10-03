@@ -87,6 +87,9 @@ const sampleDatasets = [
   { id: "ecommerce.csv", label: "E-Commerce", domain: "E-commerce" },
   { id: "finance.csv", label: "Finance & Cash Flow", domain: "Finance" },
   { id: "healthcare.csv", label: "Healthcare & Patients", domain: "Healthcare" },
+  { id: "retail.csv", label: "Omnichannel Retail", domain: "Retail" },
+  { id: "logistics.csv", label: "Supply Chain & Logistics", domain: "Logistics" },
+  { id: "customer_analytics.csv", label: "SaaS Churn & Cohorts", domain: "Customer Analytics" },
 ];
 
 const analystQuestions = [

@@ -224,3 +224,79 @@ class NotificationSetting(Base):
 
     user = relationship("User")
 
+
+class AnomalyRecord(Base):
+    __tablename__ = "anomaly_records"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    workspace_id = Column(String(36), ForeignKey("workspaces.id"), nullable=False, index=True)
+    dataset_id = Column(String(64), ForeignKey("datasets.id"), nullable=True, index=True)
+    metric_column = Column(String(100), nullable=False)
+    period = Column(String(100), nullable=False)
+    observed_value = Column(Float, nullable=False)
+    expected_range_lower = Column(Float, nullable=True)
+    expected_range_upper = Column(Float, nullable=True)
+    deviation_score = Column(Float, nullable=False)
+    severity = Column(String(20), default="medium", nullable=False, index=True)  # critical, high, medium, low
+    algorithm = Column(String(50), default="z_score", nullable=False)  # z_score, iqr, isolation_forest, moving_residual
+    explanation = Column(Text, nullable=False)
+    status = Column(String(30), default="open", nullable=False, index=True)  # open, investigating, resolved, dismissed
+    resolved_by = Column(String(36), nullable=True)
+    resolution_notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=utc_now, nullable=False, index=True)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+
+class TransformationRecipe(Base):
+    __tablename__ = "transformation_recipes"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    workspace_id = Column(String(36), ForeignKey("workspaces.id"), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    pipeline_json = Column(Text, default="[]", nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+
+class NotificationLog(Base):
+    __tablename__ = "notification_logs"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    workspace_id = Column(String(36), ForeignKey("workspaces.id"), nullable=False, index=True)
+    alert_rule_id = Column(String(36), ForeignKey("alerts.id"), nullable=True, index=True)
+    channel = Column(String(50), nullable=False)  # in_app, email, slack, webhook
+    title = Column(String(255), nullable=False)
+    payload_json = Column(Text, default="{}", nullable=False)
+    status = Column(String(30), default="delivered", nullable=False)  # delivered, failed, pending
+    status_code = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=utc_now, nullable=False, index=True)
+
+
+class DashboardBookmark(Base):
+    __tablename__ = "dashboard_bookmarks"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    workspace_id = Column(String(36), ForeignKey("workspaces.id"), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    state_json = Column(Text, default="{}", nullable=False)
+    is_default = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+
+
+class DashboardVersion(Base):
+    __tablename__ = "dashboard_versions"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    dashboard_id = Column(String(36), ForeignKey("dashboards.id"), nullable=False, index=True)
+    version_number = Column(Integer, nullable=False)
+    title = Column(String(255), nullable=False)
+    layout_json = Column(Text, default="{}", nullable=False)
+    created_by = Column(String(36), nullable=False)
+    change_summary = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=utc_now, nullable=False, index=True)
+
+

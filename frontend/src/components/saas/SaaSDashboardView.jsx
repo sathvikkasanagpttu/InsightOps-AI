@@ -2,7 +2,8 @@ import React, { useEffect, useState } from "react";
 import {
   BarChart3, BrainCircuit, Database, FileText, LayoutGrid, Layers,
   Bell, ShieldCheck, ArrowRight, Clock, Plus, ExternalLink, Activity, Users,
-  AlertTriangle, TrendingUp, Sparkles, RefreshCw, Zap, CheckCircle2
+  AlertTriangle, TrendingUp, Sparkles, RefreshCw, Zap, CheckCircle2,
+  Target, Award, TrendingDown
 } from "lucide-react";
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis
@@ -13,28 +14,144 @@ import KPIWidget from "../ui/KPIWidget";
 import ChartCard from "../ui/ChartCard";
 import GlassCard from "../ui/GlassCard";
 
+function CommandCenterCard({ card }) {
+  const isAhead = card.status === "Ahead of Target";
+  const isOnTrack = card.status === "On Track";
+  const badgeClass = isAhead ? "badge-ahead" : isOnTrack ? "badge-ontrack" : "badge-attention";
+
+  const points = card.sparkline || [];
+  const minVal = points.length ? Math.min(...points) : 0;
+  const maxVal = points.length ? Math.max(...points) : 1;
+  const range = maxVal - minVal || 1;
+  const width = 110;
+  const height = 30;
+  const svgPoints = points.map((p, i) => {
+    const x = (i / (points.length - 1 || 1)) * width;
+    const y = height - ((p - minVal) / range) * (height - 6) - 3;
+    return `${x},${y}`;
+  }).join(" ");
+
+  return (
+    <div className="command-center-kpi-card glass-premium">
+      <div className="cc-card-header">
+        <span className="cc-card-title">{card.title}</span>
+        <span className={`cc-status-pill ${badgeClass}`}>{card.status}</span>
+      </div>
+
+      <div className="cc-value-row">
+        <strong className="cc-main-value">{card.formatted_value}</strong>
+        {points.length > 1 && (
+          <div className="cc-sparkline-wrapper" title="Trend distribution">
+            <svg width={width} height={height} className="cc-sparkline-svg">
+              <polyline
+                fill="none"
+                stroke={isAhead ? "#10b981" : isOnTrack ? "#06b6d4" : "#f59e0b"}
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                points={svgPoints}
+              />
+            </svg>
+          </div>
+        )}
+      </div>
+
+      <div className="cc-target-section">
+        <div className="cc-target-meta">
+          <span className="cc-target-label">Target: <b>{card.target_value}</b></span>
+          <span className="cc-achievement-pct">{card.achievement_pct}%</span>
+        </div>
+        <div className="cc-progress-track">
+          <div
+            className={`cc-progress-bar ${isAhead ? "bar-emerald" : isOnTrack ? "bar-cyan" : "bar-amber"}`}
+            style={{ width: `${Math.min(100, Math.max(0, card.achievement_pct))}%` }}
+          />
+        </div>
+      </div>
+
+      <div className="cc-benchmark-footer">
+        <span className="cc-benchmark-name">{card.benchmark_name}:</span>
+        <span className="cc-benchmark-val">{card.benchmark_value}</span>
+        <span className={`cc-variance-badge ${String(card.benchmark_variance || "").startsWith("+") ? "var-positive" : "var-negative"}`}>
+          {card.benchmark_variance}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function ExecutiveBriefingBox({ summary }) {
+  if (!summary) return null;
+  const risk = summary.risk_radar || { level: summary.risk_level || "Optimal", summary: summary.risk_summary };
+  const riskClass = risk.level === "Critical" ? "risk-critical" : risk.level === "Moderate" ? "risk-moderate" : "risk-optimal";
+
+  return (
+    <div className="executive-briefing-banner glass-gold">
+      <div className="eb-header">
+        <div className="eb-title-group">
+          <Sparkles size={16} className="text-gold" />
+          <span className="eb-kicker">EXECUTIVE INTELLIGENCE BRIEFING</span>
+          <span className={`eb-risk-pill ${riskClass}`}>
+            Risk: {risk.level}
+          </span>
+        </div>
+        <span className="eb-time-tag">Automated Grounded Synthesis</span>
+      </div>
+
+      <h3 className="eb-headline">{summary.headline}</h3>
+      <p className="eb-summary-text">{summary.executive_summary || summary.executive_briefing}</p>
+
+      {summary.recommendations && summary.recommendations.length > 0 && (
+        <div className="eb-recommendations-row">
+          <span className="eb-rec-label">Strategic Priorities:</span>
+          <div className="eb-rec-cards">
+            {summary.recommendations.slice(0, 3).map((rec, i) => (
+              <div key={i} className="eb-rec-card">
+                <div className="eb-rec-head">
+                  <span className="eb-rec-num">{i + 1}</span>
+                  <strong>{rec.title}</strong>
+                </div>
+                <p>{rec.description}</p>
+                <div className="eb-rec-impact-pill">
+                  Impact: <b>{rec.projected_impact}</b>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SaaSDashboardView({ onNavigate, datasetId, datasetProfile }) {
   const { user, activeWorkspace, workspaces } = useAuth();
   const [reports, setReports] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [recentActivity, setRecentActivity] = useState([]);
   const [systemHealth, setSystemHealth] = useState(null);
+  const [commandCenter, setCommandCenter] = useState(null);
+  const [executiveSummary, setExecutiveSummary] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadDashboardData() {
       setLoading(true);
       try {
-        const [repRes, notifRes, actRes, sysRes] = await Promise.all([
+        const [repRes, notifRes, actRes, sysRes, ccRes, esRes] = await Promise.all([
           api("/api/reports").catch(() => []),
           api(`/api/alerts/notifications?dataset_id=${encodeURIComponent(datasetId || "demo-sales")}`).catch(() => []),
           api("/api/activity?limit=6").catch(() => []),
-          api("/api/system/health").catch(() => null)
+          api("/api/system/health").catch(() => null),
+          api(`/api/analysis/command-center?dataset_id=${encodeURIComponent(datasetId || "demo-sales")}`).catch(() => null),
+          api(`/api/analysis/executive-summary?dataset_id=${encodeURIComponent(datasetId || "demo-sales")}`).catch(() => null)
         ]);
         setReports(Array.isArray(repRes) ? repRes : []);
         setAlerts(Array.isArray(notifRes) ? notifRes : []);
         setRecentActivity(Array.isArray(actRes) ? actRes : []);
         setSystemHealth(sysRes);
+        setCommandCenter(ccRes);
+        setExecutiveSummary(esRes);
       } catch (err) {
         console.warn("Error fetching dashboard overview data:", err);
       } finally {
@@ -91,7 +208,31 @@ export default function SaaSDashboardView({ onNavigate, datasetId, datasetProfil
         </div>
       </section>
 
-      {/* 2. Dynamic Live Dataset KPIs (Count-up numbers, sparklines & variance) */}
+      {/* 2. Executive Intelligence Briefing */}
+      {executiveSummary && <ExecutiveBriefingBox summary={executiveSummary} />}
+
+      {/* 3. Executive Command Center (Configurable KPI Cards with Targets, Benchmarks & Variance) */}
+      {commandCenter?.kpis && commandCenter.kpis.length > 0 && (
+        <section className="command-center-section">
+          <div className="section-header-row">
+            <div>
+              <span className="section-kicker">EXECUTIVE COMMAND CENTER</span>
+              <h2 className="section-title">Performance Targets & Industry Peer Benchmarks</h2>
+            </div>
+            <div className="section-health-pill">
+              Overall Status: <strong className="text-emerald">{commandCenter.overall_health || "Optimal"}</strong>
+            </div>
+          </div>
+
+          <div className="command-center-kpi-grid">
+            {commandCenter.kpis.map((card, idx) => (
+              <CommandCenterCard key={idx} card={card} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* 4. Dynamic Live Dataset KPIs (Count-up numbers, sparklines & variance) */}
       <section className="dashboard-kpis-section">
         <div className="section-header-row">
           <div>

@@ -28,6 +28,9 @@ DEMO_DATASETS = {
     "demo-ecommerce": {"filename": "ecommerce.csv", "name": "E-Commerce", "domain": "E-commerce"},
     "demo-healthcare": {"filename": "healthcare.csv", "name": "Healthcare & Patients", "domain": "Healthcare"},
     "demo-operations": {"filename": "customer_operations.csv", "name": "Customer Operations", "domain": "Operations"},
+    "demo-retail": {"filename": "retail.csv", "name": "Omnichannel Retail & Inventory", "domain": "Retail"},
+    "demo-logistics": {"filename": "logistics.csv", "name": "Supply Chain & Logistics", "domain": "Logistics"},
+    "demo-customer-analytics": {"filename": "customer_analytics.csv", "name": "SaaS Churn & Cohorts", "domain": "Customer Analytics"},
 }
 
 

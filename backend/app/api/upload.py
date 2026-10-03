@@ -256,3 +256,112 @@ def dataset_rows_by_id(
     sort_order: str = Query(default="asc", pattern="^(asc|desc)$")
 ):
     return _get_rows(dataset_id, page, page_size, search, sort_by, sort_order)
+
+
+class SaveRecipeRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=255)
+    description: Optional[str] = None
+    operations: List[Dict[str, Any]] = Field(min_length=1)
+    workspace_id: Optional[str] = "default-workspace"
+
+
+@router.get("/api/datasets/recipes")
+def list_recipes(
+    workspace_id: Optional[str] = "default-workspace"
+):
+    """List saved, reusable transformation pipelines."""
+    from ..db.session import SessionLocal
+    from ..db.models import TransformationRecipe
+    db = SessionLocal()
+    try:
+        query = db.query(TransformationRecipe)
+        if workspace_id:
+            query = query.filter(TransformationRecipe.workspace_id == workspace_id)
+        recipes = query.order_by(TransformationRecipe.created_at.desc()).all()
+        import json
+        return [
+            {
+                "id": r.id,
+                "name": r.name,
+                "description": r.description,
+                "operations": json.loads(r.pipeline_json),
+                "created_at": r.created_at.isoformat()
+            }
+            for r in recipes
+        ]
+    finally:
+        db.close()
+
+
+@router.post("/api/datasets/recipes")
+def save_recipe(
+    req: SaveRecipeRequest
+):
+    """Saves a transformation pipeline as a reusable recipe."""
+    from ..db.session import SessionLocal
+    from ..db.models import TransformationRecipe
+    import json
+    db = SessionLocal()
+    try:
+        recipe = TransformationRecipe(
+            workspace_id=req.workspace_id or "default-workspace",
+            user_id="default-user",
+            name=req.name,
+            description=req.description,
+            pipeline_json=json.dumps(req.operations)
+        )
+        db.add(recipe)
+        db.commit()
+        return {
+            "id": recipe.id,
+            "name": recipe.name,
+            "description": recipe.description,
+            "operations_count": len(req.operations),
+            "created_at": recipe.created_at.isoformat(),
+            "message": f"Recipe '{recipe.name}' saved successfully."
+        }
+    finally:
+        db.close()
+
+
+@router.post("/api/datasets/{dataset_id}/apply-recipe/{recipe_id}")
+def apply_recipe_to_dataset(
+    dataset_id: str,
+    recipe_id: str
+):
+    """Executes a saved recipe on the specified dataset."""
+    from ..db.session import SessionLocal
+    from ..db.models import TransformationRecipe
+    import json
+    db = SessionLocal()
+    try:
+        recipe = db.query(TransformationRecipe).filter(TransformationRecipe.id == recipe_id).first()
+        if not recipe:
+            raise HTTPException(status_code=404, detail="Transformation recipe not found")
+        operations = json.loads(recipe.pipeline_json)
+        store = get_store()
+        res = store.apply_transformations(dataset_id, operations)
+        return {
+            "message": f"Successfully applied recipe '{recipe.name}'",
+            "actions": res.get("actions", []),
+            "report": res.get("report")
+        }
+    finally:
+        db.close()
+
+
+@router.delete("/api/datasets/recipes/{recipe_id}")
+def delete_recipe(recipe_id: str):
+    from ..db.session import SessionLocal
+    from ..db.models import TransformationRecipe
+    db = SessionLocal()
+    try:
+        recipe = db.query(TransformationRecipe).filter(TransformationRecipe.id == recipe_id).first()
+        if not recipe:
+            raise HTTPException(status_code=404, detail="Recipe not found")
+        db.delete(recipe)
+        db.commit()
+        return {"message": "Recipe deleted successfully."}
+    finally:
+        db.close()
+

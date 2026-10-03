@@ -348,3 +348,140 @@ def test_api_keys_and_notification_settings(client):
     assert fail_me.status_code == 401
 
 
+def test_nl2sql_governed_query(client):
+    # 1. Valid NL2SQL query against demo-sales
+    res = client.post("/api/analyst/sql-query", json={
+        "dataset_id": "demo-sales",
+        "question": "What is total revenue by category?"
+    })
+    assert res.status_code == 200
+    data = res.json()
+    assert "sql" in data
+    assert "results" in data
+    assert "explanation" in data
+    assert "evidence_citations" in data
+    assert len(data["results"]) > 0
+
+    # 2. Blocked DDL / DML query
+    blocked = client.post("/api/analyst/sql-query", json={
+        "dataset_id": "demo-sales",
+        "sql": "DROP TABLE dataset;"
+    })
+    assert blocked.status_code == 400
+    assert "Safe SQL" in blocked.json()["detail"] or "Violation" in blocked.json()["detail"] or "Disallowed" in blocked.json()["detail"]
+
+
+def test_executive_summary_and_command_center(client):
+    # 1. Command center endpoint
+    cc_res = client.get("/api/analysis/command-center?dataset_id=demo-sales")
+    assert cc_res.status_code == 200
+    cc_data = cc_res.json()
+    assert "kpis" in cc_data
+    assert len(cc_data["kpis"]) >= 1
+    assert "target_value" in cc_data["kpis"][0] or "target" in cc_data["kpis"][0]
+    assert "status" in cc_data["kpis"][0]
+    assert "sparkline" in cc_data["kpis"][0]
+
+    # 2. Executive summary endpoint
+    es_res = client.get("/api/analysis/executive-summary?dataset_id=demo-sales")
+    assert es_res.status_code == 200
+    es_data = es_res.json()
+    assert "executive_briefing" in es_data
+    assert "risk_radar" in es_data
+    assert "prioritized_recommendations" in es_data
+    assert len(es_data["prioritized_recommendations"]) >= 1
+
+
+def test_data_quality_deep_center(client):
+    q_res = client.get("/api/quality/deep-analysis?dataset_id=demo-sales")
+    assert q_res.status_code == 200
+    q_data = q_res.json()
+    assert "overall_score" in q_data
+    assert "dimensions" in q_data
+    assert "completeness" in q_data["dimensions"]
+    assert "uniqueness" in q_data["dimensions"]
+    assert "drift_detected" in q_data
+    assert "column_analysis" in q_data
+
+
+def test_anomaly_tracking_and_forecast_engine(client):
+    # 1. Tracked anomalies
+    ano_res = client.get("/api/anomalies/tracked?dataset_id=demo-sales")
+    assert ano_res.status_code == 200
+    anomalies = ano_res.json()
+    assert isinstance(anomalies, list)
+    if len(anomalies) > 0:
+        ano_id = anomalies[0]["id"]
+        patch_res = client.patch(f"/api/anomalies/{ano_id}/status", json={"status": "investigating"})
+        assert patch_res.status_code == 200
+        assert patch_res.json()["status"] == "investigating"
+
+    # 2. Forecasting
+    fc_res = client.post("/api/forecast/multivariate", json={
+        "dataset_id": "demo-sales",
+        "target_column": "revenue",
+        "periods": 3
+    })
+    assert fc_res.status_code == 200
+    fc_data = fc_res.json()
+    assert "forecast" in fc_data or "values" in fc_data or "predictions" in fc_data or "champion_model" in fc_data
+
+
+def test_report_versions_and_bookmarks(client):
+    login_res = client.post("/api/auth/login", json={
+        "email": "admin@insightops.ai",
+        "password": "Password123!"
+    })
+    token = login_res.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # 1. Create a report
+    rep = client.post("/api/reports", headers=headers, json={
+        "workspace_id": "default-workspace",
+        "title": "Versioned Executive Deck",
+        "pages": [{"id": "p1", "title": "P1", "visuals": []}]
+    }).json()
+    rep_id = rep["id"]
+
+    # 2. Save version snapshot
+    v_res = client.post(f"/api/reports/{rep_id}/versions", headers=headers, json={
+        "change_summary": "Initial baseline commit"
+    })
+    assert v_res.status_code == 200
+    assert v_res.json()["version_number"] >= 1
+
+    # 3. List versions
+    versions = client.get(f"/api/reports/{rep_id}/versions", headers=headers).json()
+    assert len(versions) >= 1
+
+    # 4. Generate print-ready executive briefing HTML
+    html_res = client.get(f"/api/reports/{rep_id}/executive-html", headers=headers)
+    assert html_res.status_code == 200
+    assert "<!DOCTYPE html>" in html_res.text
+
+    # 5. Bookmarks
+    bm_res = client.post("/api/reports/bookmarks", headers=headers, json={
+        "report_id": rep_id,
+        "name": "Q3 Filter State",
+        "filter_state": {"region": "North", "quarter": "Q3"}
+    })
+    assert bm_res.status_code == 200
+    bm_id = bm_res.json()["id"]
+
+    bms = client.get(f"/api/reports/bookmarks?report_id={rep_id}", headers=headers).json()
+    assert any(b["id"] == bm_id for b in bms)
+
+    del_bm = client.delete(f"/api/reports/bookmarks/{bm_id}", headers=headers)
+    assert del_bm.status_code == 200
+
+
+def test_system_telemetry_metrics(client):
+    met_res = client.get("/api/system/metrics")
+    assert met_res.status_code == 200
+    metrics = met_res.json()
+    assert "cache" in metrics
+    assert "memory" in metrics
+    assert "uptime_seconds" in metrics
+
+
+

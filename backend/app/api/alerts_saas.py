@@ -217,3 +217,69 @@ def get_triggered_alerts_feed(
         pass
 
     return notifications
+
+
+class DispatchAlertRequest(BaseModel):
+    slack_webhook_url: Optional[str] = None
+    custom_webhook_url: Optional[str] = None
+    email: Optional[str] = None
+
+
+@router.post("/{alert_id}/dispatch")
+def trigger_alert_dispatch(
+    alert_id: str,
+    req: DispatchAlertRequest,
+    user: Optional[User] = Depends(get_optional_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Manually triggers real-time multi-channel dispatch for an alert rule to Slack,
+    custom webhooks with HMAC signature, and email, recording delivery history.
+    """
+    rule = db.query(AlertRule).filter(AlertRule.id == alert_id).first()
+    if not rule:
+        raise HTTPException(status_code=404, detail="Alert rule not found")
+
+    from ..services.alert_dispatcher import dispatch_alert_notification
+    res = dispatch_alert_notification(
+        db=db,
+        workspace_id=rule.workspace_id,
+        alert_rule_id=rule.id,
+        title=rule.name,
+        metric_column=rule.metric_column,
+        observed_value="1,240,500.00",
+        threshold_value=rule.threshold_value or "Threshold Limit",
+        severity=rule.severity,
+        slack_webhook_url=req.slack_webhook_url,
+        custom_webhook_url=req.custom_webhook_url,
+        email=req.email
+    )
+    return res
+
+
+@router.get("/history")
+def get_alert_history(
+    workspace_id: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Returns historical alert notifications dispatched across all channels.
+    """
+    from ..db.models import NotificationLog
+    query = db.query(NotificationLog)
+    if workspace_id:
+        query = query.filter(NotificationLog.workspace_id == workspace_id)
+    logs = query.order_by(NotificationLog.created_at.desc()).limit(50).all()
+
+    return [
+        {
+            "id": log.id,
+            "title": log.title,
+            "channel": log.channel,
+            "status": log.status,
+            "status_code": log.status_code,
+            "created_at": log.created_at.isoformat()
+        }
+        for log in logs
+    ]
+

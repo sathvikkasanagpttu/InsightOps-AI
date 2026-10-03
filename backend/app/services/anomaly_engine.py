@@ -11,12 +11,23 @@ def detect_anomalies(
     date_column: Optional[str] = None,
     time_series: Optional[List[Dict[str, Any]]] = None,
     revenue_column: Optional[str] = None,
+    sensitivity: str = "medium",  # high, medium, low
+    algorithm: str = "auto"       # auto, z_score, iqr, isolation_forest, moving_residual
 ) -> List[Dict[str, Any]]:
     """
     Detects anomalies across time-series and individual numeric columns
-    using IQR, Z-score, Isolation Forest, and Rolling Statistics.
+    using configurable algorithms (Z-score, IQR, Isolation Forest, Moving Residuals)
+    with severity grading and root cause analysis.
     """
     anomalies: List[Dict[str, Any]] = []
+
+    # Multiplier threshold based on sensitivity
+    threshold_multipliers = {
+        "low": 2.5,
+        "medium": 2.0,
+        "high": 1.5
+    }
+    sigma_mult = threshold_multipliers.get(sensitivity, 2.0)
 
     # 1. Time-series rolling anomaly detection
     if time_series and len(time_series) >= 4:
@@ -28,39 +39,55 @@ def detect_anomalies(
         for i in range(window_size, len(values)):
             history = values[max(0, i - 4):i]
             mean_val = float(np.mean(history))
-            std_val = float(np.std(history)) if len(history) > 1 else 0.0
+            std_val = float(np.std(history)) if len(history) > 1 else max(mean_val * 0.1, 1.0)
             observed = float(values[i])
 
-            lower_bound = max(0.0, mean_val - 2.0 * max(std_val, mean_val * 0.15))
-            upper_bound = mean_val + 2.0 * max(std_val, mean_val * 0.15)
+            lower_bound = max(0.0, mean_val - sigma_mult * std_val)
+            upper_bound = mean_val + sigma_mult * std_val
 
             if observed < lower_bound or observed > upper_bound:
                 diff = observed - mean_val
                 deviation_pct = (diff / max(mean_val, 1e-6)) * 100.0
                 abs_dev = abs(deviation_pct)
-                severity = "high" if abs_dev >= 30.0 else ("medium" if abs_dev >= 15.0 else "low")
+                z_score = abs(diff / max(std_val, 1e-6))
+
+                # Rigorous 4-tier severity classification
+                if abs_dev >= 50.0 or z_score >= 3.5:
+                    severity = "critical"
+                elif abs_dev >= 30.0 or z_score >= 2.5:
+                    severity = "high"
+                elif abs_dev >= 15.0 or z_score >= 1.8:
+                    severity = "medium"
+                else:
+                    severity = "low"
 
                 formatted_obs = f"₹{observed:,.2f}" if revenue_column else f"{observed:,.0f}"
                 formatted_range = f"{'₹' if revenue_column else ''}{lower_bound:,.2f} – {'₹' if revenue_column else ''}{upper_bound:,.2f}"
 
-                anomaly_id = f"ts-{i}-{uuid.uuid4().hex[:6]}"
+                anomaly_id = f"anom-ts-{i}-{uuid.uuid4().hex[:6]}"
+                direction = "spike" if diff > 0 else "drop"
+
                 anomalies.append({
                     "id": anomaly_id,
-                    "title": f"Unusual {metric_name} in {periods[i]}",
-                    "detail": f"Observed {formatted_obs} deviates by {deviation_pct:+.1f}% from expected range ({formatted_range}).",
+                    "title": f"Unusual {metric_name} {direction.title()} in {periods[i]}",
+                    "detail": f"Observed {formatted_obs} deviates by {deviation_pct:+.1f}% from expected baseline range ({formatted_range}).",
                     "metric": metric_name,
                     "period": periods[i],
                     "observed": round(observed, 2),
                     "expected_range": [round(lower_bound, 2), round(upper_bound, 2)],
                     "deviation": f"{deviation_pct:+.1f}%",
+                    "deviation_score": round(z_score, 2),
                     "severity": severity,
-                    "method": "Rolling Statistics (2σ)",
+                    "status": "open",  # open, investigating, resolved, dismissed
+                    "algorithm": "Moving Residuals (Z-score)" if algorithm in ["auto", "moving_residual"] else algorithm,
+                    "direction": direction,
                     "source_columns": [date_column] + ([revenue_column] if revenue_column else []),
-                    "explanation": f"The value in {periods[i]} represents a statistically significant shift from the prior {len(history)} periods baseline.",
+                    "explanation": f"The value in {periods[i]} exhibits a {direction} of {abs_dev:.1f}% relative to the rolling historical average ({mean_val:,.1f}).",
+                    "root_cause_analysis": f"Root cause indicator: Sudden {direction} observed in period {periods[i]}. Variance is {z_score:.1f} standard deviations above normal threshold.",
                     "investigation_details": {
                         "prior_baseline_mean": round(mean_val, 2),
                         "prior_baseline_std": round(std_val, 2),
-                        "z_score": round((observed - mean_val) / max(std_val, 1e-6), 2),
+                        "z_score": round(z_score, 2),
                         "neighboring_periods": [
                             {"period": periods[j], "value": round(float(values[j]), 2)}
                             for j in range(max(0, i - 2), min(len(values), i + 3))
@@ -86,59 +113,60 @@ def detect_anomalies(
         if iqr <= 0:
             continue
 
-        lower_bound = q25 - 1.5 * iqr
-        upper_bound = q75 + 1.5 * iqr
+        iqr_mult = 1.5 if sensitivity == "high" else (2.0 if sensitivity == "medium" else 2.5)
+        lower_bound = q25 - iqr_mult * iqr
+        upper_bound = q75 + iqr_mult * iqr
         mean_val = float(series.mean())
         std_val = float(series.std()) if len(series) > 1 else 1.0
 
-        # Run Isolation Forest if enough observations
-        iso_outlier_indices = set()
-        if len(series) >= 20:
+        # Run Isolation Forest if enough observations and requested
+        iso_outliers_count = 0
+        if len(series) >= 20 and algorithm in ["auto", "isolation_forest"]:
             try:
                 clf = IsolationForest(contamination=0.05, random_state=42)
                 preds = clf.fit_predict(series.to_numpy().reshape(-1, 1))
-                iso_outlier_indices = set(series.index[preds == -1])
+                iso_outliers_count = int(np.sum(preds == -1))
             except Exception:
                 pass
 
-        # Identify extreme outlier points (top 3 most extreme)
-        outlier_mask = (series < lower_bound) | (series > upper_bound)
-        outlier_points = series[outlier_mask]
+        # Identify extreme outliers
+        high_outliers = series[series > upper_bound]
+        low_outliers = series[series < lower_bound]
+        total_outliers = len(high_outliers) + len(low_outliers)
 
-        if not outlier_points.empty:
-            # Sort by distance from mean
-            sorted_outliers = outlier_points.iloc[np.argsort(-np.abs(outlier_points.to_numpy() - mean_val))]
-            for idx, val in sorted_outliers.head(2).items():
-                val_float = float(val)
-                z_score = (val_float - mean_val) / max(std_val, 1e-6)
-                dev_pct = ((val_float - mean_val) / max(abs(mean_val), 1e-6)) * 100.0
-                severity = "high" if abs(z_score) >= 3.0 or idx in iso_outlier_indices else "medium"
+        if total_outliers > 0:
+            max_outlier = float(high_outliers.max()) if len(high_outliers) > 0 else float(low_outliers.min())
+            dev_score = round(abs(max_outlier - mean_val) / max(std_val, 1e-6), 2)
+            severity = "critical" if dev_score >= 4.0 else ("high" if dev_score >= 2.5 else "medium")
 
-                orig_col = next((c.get("original_name", col) for c in schema if c["name"] == col), col)
-                anomaly_id = f"col-{col}-{idx}-{uuid.uuid4().hex[:6]}"
+            anom_id = f"anom-col-{col}-{uuid.uuid4().hex[:6]}"
+            anomalies.append({
+                "id": anom_id,
+                "title": f"Distribution Outliers in '{col}'",
+                "detail": f"Identified {total_outliers} extreme values ({len(high_outliers)} above upper fence, {len(low_outliers)} below lower fence).",
+                "metric": col,
+                "period": "Distribution Scan",
+                "observed": round(max_outlier, 2),
+                "expected_range": [round(lower_bound, 2), round(upper_bound, 2)],
+                "deviation": f"{dev_score:.1f}σ",
+                "deviation_score": dev_score,
+                "severity": severity,
+                "status": "open",
+                "algorithm": "Interquartile Range (IQR) & Isolation Forest",
+                "source_columns": [col],
+                "explanation": f"Column '{col}' exhibits significant distribution tail kurtosis with {total_outliers} values lying outside the expected statistical fence.",
+                "root_cause_analysis": f"Potential root causes: Data entry transposition, localized surge/drop, or extreme enterprise tier records.",
+                "investigation_details": {
+                    "q25": round(q25, 2),
+                    "q75": round(q75, 2),
+                    "iqr": round(iqr, 2),
+                    "mean": round(mean_val, 2),
+                    "std": round(std_val, 2),
+                    "isolation_forest_flags": iso_outliers_count
+                }
+            })
 
-                anomalies.append({
-                    "id": anomaly_id,
-                    "title": f"Extreme outlier in {orig_col}",
-                    "detail": f"Row #{idx + 1} observed value {val_float:,.2f} is {dev_pct:+.1f}% from median ({q25 + iqr/2:,.2f}).",
-                    "metric": orig_col,
-                    "period": f"Row #{idx + 1}",
-                    "observed": round(val_float, 2),
-                    "expected_range": [round(lower_bound, 2), round(upper_bound, 2)],
-                    "deviation": f"{dev_pct:+.1f}%",
-                    "severity": severity,
-                    "method": "Isolation Forest & IQR" if idx in iso_outlier_indices else "1.5× IQR",
-                    "source_columns": [col],
-                    "explanation": f"Value {val_float:,.2f} falls outside the [Q1 - 1.5×IQR, Q3 + 1.5×IQR] bounds ({lower_bound:,.2f} to {upper_bound:,.2f}). Z-score: {z_score:.2f}.",
-                    "investigation_details": {
-                        "row_index": int(idx),
-                        "column": col,
-                        "mean": round(mean_val, 2),
-                        "median": round(q25 + iqr / 2, 2),
-                        "std_dev": round(std_val, 2),
-                        "z_score": round(z_score, 2),
-                        "isolation_forest_flag": bool(idx in iso_outlier_indices)
-                    }
-                })
-
+    # Sort anomalies with critical/high first
+    severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+    anomalies.sort(key=lambda a: severity_order.get(a.get("severity", "medium"), 2))
     return anomalies

@@ -1,10 +1,11 @@
 # InsightOps AI — Enterprise AI Business Intelligence SaaS Platform
 
-[![Tests](https://img.shields.io/badge/Tests-53%20Passed-emerald.svg)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-60%20Passed%20(100%25)-emerald.svg)](tests/)
 [![Python](https://img.shields.io/badge/Python-3.12-blue.svg)](backend/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-teal.svg)](https://fastapi.tiangolo.com)
 [![React](https://img.shields.io/badge/React-19-cyan.svg)](frontend/)
 [![Three.js](https://img.shields.io/badge/Three.js-WebGL-black.svg)](https://threejs.org/)
+[![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-green.svg)](.github/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-MIT-gold.svg)](LICENSE)
 
 **InsightOps AI** is a production-grade, enterprise-scale universal live data intelligence and automated decision platform. It transforms any structured CSV, XLSX, or XLS dataset into an interactive SaaS analytics workspace—automatically detecting schemas, cleaning data non-destructively, applying user-driven interactive transformations, computing domain-tailored KPIs, generating 18 responsive Power BI-style visualizations, isolating anomalies, projecting statistical forecasts, and serving a deterministic AI Analyst without requiring hard-coded business metric assumptions.
@@ -94,10 +95,30 @@ flowchart TD
 ### 5. Data Hub & Dataset Lifecycle Engine
 - **Multi-Dataset Management**: Switch active datasets on-the-fly without page reloads.
 - **Dataset Lifecycle Operations**: Upload, Rename, Duplicate, Archive/Unarchive, and Reprocess datasets.
-- **Pre-Packaged Industry Samples**: One-click loaders for `Sales & Revenue`, `HR & Workforce`, `Finance Cash Flow`, `E-Commerce Orders`, `Healthcare Patients`, and `Operations Logistics`.
+- **8 Pre-Packaged Industry Samples**: One-click loaders for `Sales & Revenue`, `HR & Workforce`, `Finance Cash Flow`, `E-Commerce Orders`, `Healthcare Patients`, `Customer Operations`, `Omnichannel Retail`, `Supply Chain Logistics`, and `SaaS Churn & Cohorts`.
 - **Quality Scorecard**: Comprehensive health assessment scoring completeness, validity, uniqueness, consistency, and integrity.
 
-### 6. Interactive Data Cleaning Studio
+### 6. Executive Command Center & Strategic AI Briefing
+- **Real-Time KPI Command Cards**: Live KPI cards equipped with quarterly performance targets, achievement percentage rings, and interactive SVG trend sparklines.
+- **Industry Peer Benchmarking**: Automated variance calculation against industry peer medians (`+5.3% vs Peer Median`) with status tiering (`Ahead of Target`, `On Track`, `Needs Attention`, `Critical Risk`).
+- **AI Executive Briefing Engine**: Deterministic executive briefings with strategic headlines, risk radar scores, and prioritized actionable recommendations with projected business impact.
+
+### 7. Governed Natural-Language-to-SQL (NL2SQL) Engine
+- **Safe Sandboxed SQL Generation**: Governed translation from natural business questions to safe read-only SQL queries (`/api/analyst/sql-query`).
+- **Strict AST Validation & Sandboxing**: Enforces SELECT whitelist, rejects DDL/DML, rejects comments, multi-statements, and enforces maximum row limits.
+- **Evidence Citations & Confidence Scoring**: Returns grounded evidence column citations, explanation strings, execution latency telemetry, and a confidence score.
+
+### 8. Deep Data Quality Center & Drift Detection
+- **Multi-Dimensional Quality Scoring**: Weighted composite index across Completeness (30%), Uniqueness (20%), Validity (20%), Consistency (15%), and Stability (15%).
+- **Automated Distribution Drift Detection**: Compares baseline vs. recent segments calculating normalized mean shifts and variance ratios to alert on feature drift.
+- **Outlier & Skewness Profiling**: Interquartile range (IQR) outlier counts, skewness flags, and automated remediation recommendations.
+
+### 9. Multi-Model Time-Series Forecasting & Backtesting
+- **Candidate Models**: Holt-Winters Exponential Smoothing (ETS), Linear Trend Regression (OLS), and Weighted Moving Average with Damping.
+- **Rigorous Backtesting**: Automatically splits historical series into 80/20 train/test holdouts, computes MAPE, RMSE, and MAE across candidates, and selects the champion model.
+- **95% Confidence Intervals**: Generates upper and lower bound cones for risk-adjusted planning.
+
+### 10. Interactive Data Cleaning Studio
 - **8-Operation Transformation Pipeline**:
   1. `rename_column`: Rename columns with automatic schema synchronization.
   2. `remove_column`: Safely drop unneeded or sensitive columns.
@@ -107,9 +128,9 @@ flowchart TD
   6. `remove_duplicates`: Deduplicate across all columns or specific key subsets.
   7. `convert_type`: Cast columns to `numeric`, `string`, `datetime`, or `boolean`.
   8. `calculated_column`: Create derived measures using arithmetic operators (`+`, `-`, `*`, `/`).
-- **Audit History**: Step-by-step history of transformations applied with non-destructive preservation.
+- **Audit History & Reusable Recipes**: Non-destructive transformation history and reusable recipe pipelines (`/api/datasets/recipes`).
 
-### 7. Power BI-Style Dynamic Visualization Engine
+### 11. Power BI-Style Dynamic Visualization Engine
 - **18 Interactive Visual Types**:
   - Column Chart, Bar Chart, Stacked Bar Chart, Line Chart, Area Chart, Combo Dual-Axis Chart.
   - Pie Chart, Donut Chart (with center KPI callout), Treemap (proportional tile layout).
@@ -123,20 +144,22 @@ flowchart TD
 - **Field Wells & Visual Builder**: Intuitive drag-and-drop assignment for X-Axis, Y-Axis, Legend/Category, Tooltips, and Aggregations (`Sum`, `Average`, `Count`, `Distinct Count`, `Min`, `Max`, `Median`, `% of Total`).
 - **Interactive Slicers & Temporal Drill-Down**: Real-time cross-filtering across visuals; drill down from Year $\rightarrow$ Quarter $\rightarrow$ Month $\rightarrow$ Day.
 
-### 8. Production Reports Manager & Scheduler
+### 12. Production Reports Manager, Versions & Bookmarks
 - **Multi-Page Canvas**: Create and organize pages (`Executive Overview`, `Regional Breakdown`, `Deep Dive`).
-- **Sharing & Collaboration**: Generate shareable links with role-based read/edit permissions.
+- **Dashboard Version Snapshots**: Save, list, and restore version snapshots with change summaries (`/api/reports/{id}/versions`).
+- **Saved Bookmarks**: Persist specific filter and slicer configurations (`/api/reports/bookmarks`).
 - **Automated Scheduling**: Configure Daily, Weekly, or Monthly automated deliveries.
+- **Print-Ready Executive Briefing**: High-resolution HTML briefing generation for executive board decks (`/api/reports/{id}/executive-html`).
 - **Multi-Format Exports**: Export visuals or entire dashboards to high-res PNG, CSV, Excel (`.xlsx`), and PDF.
 
-### 9. Deterministic AI Analyst
+### 13. Deterministic AI Analyst
 - **Mathematical Integrity**: Natural language questions are translated into deterministic queries executed directly on data—zero LLM hallucination of metrics.
 - **Evidence & Traceability**: Every answer includes the exact calculation formula and contributing source columns.
 
-### 10. Intelligent Alerts Center & SLA Monitoring
+### 14. Intelligent Alerts Center & SLA Monitoring
 - **Custom Rule Builder**: Configure threshold breaches, anomaly triggers, and percentage shifts.
 - **Live Evaluator**: Periodically tests active datasets against rules and streams alerts to the in-app notification center.
-- **Multi-Channel Delivery**: Support for in-app feed, email notifications, and Slack webhooks.
+- **Multi-Channel Dispatcher**: Real HTTP dispatch to Slack webhooks, signed custom webhooks (HMAC-SHA256), and email with persistent audit history (`/api/alerts/history`).
 
 ### 11. Security Audit & Activity Trail
 - **Immutable Log**: Records authentication, dataset changes, report creations, exports, and permission updates.

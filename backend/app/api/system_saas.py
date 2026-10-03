@@ -60,3 +60,40 @@ def detailed_health_check(db: Session = Depends(get_db)):
             "multi_page_reports": True
         }
     }
+
+
+@router.get("/metrics")
+def get_system_metrics(db: Session = Depends(get_db)):
+    """
+    Returns platform observability metrics for container orchestrators,
+    APM dashboards, and telemetry inspection.
+    """
+    from ..core.cache import CacheService
+    from ..deps import get_store
+    
+    store = get_store()
+    datasets = store.list_datasets()
+    cache_metrics = CacheService.stats()
+
+    uptime_seconds = int(time.time() - START_TIME)
+
+    return {
+        "service": "InsightOps AI",
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "uptime_seconds": uptime_seconds,
+        "datasets": {
+            "total_loaded": len(datasets),
+            "active_samples": sum(1 for d in datasets if d.get("is_sample")),
+            "user_uploaded": sum(1 for d in datasets if not d.get("is_sample"))
+        },
+        "cache": cache_metrics,
+        "memory": {
+            "status": "normal",
+            "garbage_collector": "automatic"
+        },
+        "api_health": {
+            "http_status": 200,
+            "latency_sla": "< 50ms"
+        }
+    }
+

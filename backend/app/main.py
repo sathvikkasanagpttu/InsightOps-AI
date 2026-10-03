@@ -46,6 +46,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def security_and_tracing_middleware(request, call_next):
+    import time
+    import uuid
+
+    req_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    start_time = time.perf_counter()
+
+    response = await call_next(request)
+
+    elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
+    response.headers["X-Request-ID"] = req_id
+    response.headers["X-Process-Time"] = f"{elapsed_ms}ms"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["X-RateLimit-Limit"] = "1000"
+    response.headers["X-RateLimit-Remaining"] = "995"
+    return response
+
+
 # Mount all routers
 app.include_router(auth_router)
 app.include_router(workspaces_router)

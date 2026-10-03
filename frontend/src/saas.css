@@ -638,3 +638,334 @@ input:checked + .slider:before {
   transform: translateX(18px);
   background-color: #121008;
 }
+
+/* ==========================================================================
+   Executive Command Center & AI Strategic Briefing
+   ========================================================================== */
+.executive-briefing-banner {
+  background: linear-gradient(135deg, rgba(230, 195, 72, 0.08) 0%, rgba(13, 14, 18, 0.7) 100%);
+  border: 1px solid rgba(230, 195, 72, 0.25);
+  border-radius: 14px;
+  padding: 22px 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  position: relative;
+  overflow: hidden;
+}
+
+.executive-briefing-banner::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #e6c348, #818cf8, #10b981);
+}
+
+.eb-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.eb-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.eb-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #e6c348;
+}
+
+.eb-risk-pill {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.eb-risk-pill.risk-optimal {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.eb-risk-pill.risk-moderate {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.eb-risk-pill.risk-critical {
+  background: rgba(244, 63, 94, 0.15);
+  color: #fb7185;
+  border: 1px solid rgba(244, 63, 94, 0.3);
+}
+
+.eb-time-tag {
+  font-size: 11px;
+  color: #71717a;
+}
+
+.eb-headline {
+  font-size: 16px;
+  font-weight: 600;
+  color: #f4f4f5;
+  margin: 0 0 8px 0;
+}
+
+.eb-summary-text {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: #d4d4d8;
+  margin: 0 0 16px 0;
+}
+
+.eb-recommendations-row {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 14px;
+}
+
+.eb-rec-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #a1a1aa;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: block;
+  margin-bottom: 10px;
+}
+
+.eb-rec-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.eb-rec-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 12px 14px;
+  transition: all 0.2s ease;
+}
+
+.eb-rec-card:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(230, 195, 72, 0.25);
+  transform: translateY(-1px);
+}
+
+.eb-rec-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.eb-rec-num {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(230, 195, 72, 0.2);
+  color: #e6c348;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.eb-rec-head strong {
+  font-size: 12.5px;
+  color: #f4f4f5;
+}
+
+.eb-rec-card p {
+  font-size: 12px;
+  color: #a1a1aa;
+  line-height: 1.4;
+  margin: 0 0 8px 0;
+}
+
+.eb-rec-impact-pill {
+  font-size: 11px;
+  color: #34d399;
+}
+
+/* Command Center KPI Grid */
+.command-center-section {
+  margin-bottom: 28px;
+}
+
+.section-health-pill {
+  font-size: 12px;
+  color: #a1a1aa;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.command-center-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  margin-top: 14px;
+}
+
+.command-center-kpi-card {
+  background: rgba(13, 14, 18, 0.65);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 16px 18px;
+  transition: all 0.2s ease;
+}
+
+.command-center-kpi-card:hover {
+  border-color: rgba(230, 195, 72, 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.cc-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.cc-card-title {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #a1a1aa;
+}
+
+.cc-status-pill {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.cc-status-pill.badge-ahead {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+}
+
+.cc-status-pill.badge-ontrack {
+  background: rgba(6, 182, 212, 0.15);
+  color: #22d3ee;
+}
+
+.cc-status-pill.badge-attention {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+}
+
+.cc-value-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.cc-main-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: #f4f4f5;
+  letter-spacing: -0.02em;
+}
+
+.cc-sparkline-wrapper {
+  opacity: 0.85;
+}
+
+.cc-target-section {
+  margin-bottom: 12px;
+}
+
+.cc-target-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: #71717a;
+  margin-bottom: 5px;
+}
+
+.cc-target-meta b {
+  color: #d4d4d8;
+}
+
+.cc-achievement-pct {
+  font-weight: 600;
+  color: #f4f4f5;
+}
+
+.cc-progress-track {
+  height: 4px;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.cc-progress-bar {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cc-progress-bar.bar-emerald {
+  background: linear-gradient(90deg, #10b981, #34d399);
+}
+
+.cc-progress-bar.bar-cyan {
+  background: linear-gradient(90deg, #06b6d4, #22d3ee);
+}
+
+.cc-progress-bar.bar-amber {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+.cc-benchmark-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #71717a;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.cc-benchmark-val {
+  color: #d4d4d8;
+  font-weight: 500;
+}
+
+.cc-variance-badge {
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 10.5px;
+  margin-left: auto;
+}
+
+.cc-variance-badge.var-positive {
+  background: rgba(16, 185, 129, 0.12);
+  color: #34d399;
+}
+
+.cc-variance-badge.var-negative {
+  background: rgba(244, 63, 94, 0.12);
+  color: #fb7185;
+}
+
