@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import (
     Boolean,
     Column,
@@ -19,6 +19,10 @@ def generate_uuid():
     return str(uuid.uuid4())
 
 
+def utc_now():
+    return datetime.now(timezone.utc)
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -34,8 +38,8 @@ class User(Base):
     reset_token_expires_at = Column(DateTime, nullable=True)
     theme_preference = Column(String(20), default="dark", nullable=False)
     compact_numbers = Column(Boolean, default=True, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
 
     workspaces = relationship("WorkspaceMember", back_populates="user", cascade="all, delete-orphan")
     reports = relationship("Report", back_populates="creator")
@@ -49,7 +53,7 @@ class Organization(Base):
     name = Column(String(255), nullable=False)
     slug = Column(String(255), unique=True, index=True, nullable=False)
     owner_id = Column(String(36), ForeignKey("users.id"), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
 
     workspaces = relationship("Workspace", back_populates="organization", cascade="all, delete-orphan")
 
@@ -62,7 +66,7 @@ class Workspace(Base):
     owner_id = Column(String(36), ForeignKey("users.id"), nullable=False)
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
 
     organization = relationship("Organization", back_populates="workspaces")
     members = relationship("WorkspaceMember", back_populates="workspace", cascade="all, delete-orphan")
@@ -79,7 +83,7 @@ class WorkspaceMember(Base):
     workspace_id = Column(String(36), ForeignKey("workspaces.id"), nullable=False, index=True)
     user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
     role = Column(String(50), default="Viewer", nullable=False)  # Owner, Admin, Analyst, Viewer
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
 
     workspace = relationship("Workspace", back_populates="members")
     user = relationship("User", back_populates="workspaces")
@@ -100,8 +104,8 @@ class DatasetRecord(Base):
     quality_score = Column(Integer, default=100, nullable=False)
     version = Column(Integer, default=1, nullable=False)
     storage_path = Column(String(500), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
 
     workspace = relationship("Workspace", back_populates="datasets")
     reports = relationship("Report", back_populates="dataset")
@@ -121,8 +125,8 @@ class Report(Base):
     schedule_frequency = Column(String(50), nullable=True)  # daily, weekly, monthly
     is_shared = Column(Boolean, default=False, nullable=False)
     share_role = Column(String(50), default="Viewer", nullable=False)  # Viewer, Editor, Owner
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
 
     workspace = relationship("Workspace", back_populates="reports")
     dataset = relationship("DatasetRecord", back_populates="reports")
@@ -138,7 +142,7 @@ class Dashboard(Base):
     user_id = Column(String(36), ForeignKey("users.id"), nullable=False)
     title = Column(String(255), nullable=False)
     layout_json = Column(Text, default="{}", nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
 
 
 class VisualItem(Base):
@@ -150,7 +154,7 @@ class VisualItem(Base):
     title = Column(String(255), nullable=False)
     visual_type = Column(String(50), nullable=False)
     config_json = Column(Text, default="{}", nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
 
     report = relationship("Report", back_populates="visuals")
 
@@ -172,7 +176,7 @@ class AlertRule(Base):
     delivery_channel = Column(String(50), default="in_app", nullable=False)  # in_app, email, both
     schedule = Column(String(50), default="realtime", nullable=False)  # realtime, daily, weekly, monthly
     last_triggered_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
 
     workspace = relationship("Workspace", back_populates="alerts")
 
@@ -188,7 +192,35 @@ class ActivityLog(Base):
     resource_id = Column(String(64), nullable=True)
     description = Column(String(500), nullable=False)
     ip_address = Column(String(50), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    created_at = Column(DateTime, default=utc_now, nullable=False, index=True)
 
     user = relationship("User", back_populates="activity_logs")
     workspace = relationship("Workspace", back_populates="activity_logs")
+
+
+class ApiKey(Base):
+    __tablename__ = "api_keys"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String(100), default="Default Ingestion Key", nullable=False)
+    key_prefix = Column(String(20), nullable=False)
+    token = Column(String(255), unique=True, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+
+    user = relationship("User")
+
+
+class NotificationSetting(Base):
+    __tablename__ = "notification_settings"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    slack_webhook_url = Column(String(500), nullable=True)
+    email_enabled = Column(Boolean, default=True, nullable=False)
+    frequency = Column(String(50), default="instant", nullable=False)  # instant, daily, weekly
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+    user = relationship("User")
+

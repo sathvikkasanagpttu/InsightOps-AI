@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -211,7 +211,7 @@ def get_triggered_alerts_feed(
                     "severity": r.severity,
                     "channel": r.delivery_channel,
                     "message": message,
-                    "triggered_at": datetime.utcnow().isoformat()
+                    "triggered_at": datetime.now(timezone.utc).isoformat()
                 })
     except Exception:
         pass

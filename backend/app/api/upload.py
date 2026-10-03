@@ -1,6 +1,7 @@
 from pathlib import Path
-from typing import Optional
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from typing import Any, Dict, List, Optional
+from fastapi import APIRouter, Body, File, Form, HTTPException, Query, UploadFile, status
+from pydantic import BaseModel, Field
 import pandas as pd
 
 from ..deps import get_bundle, get_store, json_value
@@ -9,12 +10,41 @@ from ..services.ingestion import MAX_UPLOAD_BYTES
 router = APIRouter(tags=["Upload & Ingestion"])
 
 
+class RenameDatasetRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+
+
+class ArchiveDatasetRequest(BaseModel):
+    archived: bool = True
+
+
+class TransformDatasetRequest(BaseModel):
+    dataset_id: Optional[str] = None
+    operations: List[Dict[str, Any]] = Field(default_factory=list)
+
+
 def _max_upload_bytes() -> int:
     try:
         from .. import main as m
         return getattr(m, "MAX_UPLOAD_BYTES", MAX_UPLOAD_BYTES)
     except Exception:
         return MAX_UPLOAD_BYTES
+
+
+@router.get("/api/datasets")
+def list_datasets(include_archived: bool = Query(default=True)):
+    store = get_store()
+    return store.list_datasets(include_archived=include_archived)
+
+
+@router.post("/api/datasets/load-sample/{sample_name}")
+@router.post("/api/datasets/sample/{sample_name}")
+def load_sample_dataset(sample_name: str):
+    store = get_store()
+    try:
+        return store.load_sample(sample_name)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Could not load sample dataset: {exc}") from exc
 
 
 @router.post("/api/datasets/upload")
@@ -59,6 +89,7 @@ def get_dataset(dataset_id: str):
     return {
         "dataset_id": dataset_id,
         "filename": report["filename"],
+        "name": report["filename"],
         "created_at": report.get("created_at"),
         "rows": report["rows"],
         "columns": report["column_count"],
@@ -66,6 +97,85 @@ def get_dataset(dataset_id: str):
         "quality_score": report.get("quality_score"),
         "file_size": report.get("file_size"),
     }
+
+
+@router.patch("/api/datasets/{dataset_id}/rename")
+def rename_dataset(dataset_id: str, req: RenameDatasetRequest):
+    store = get_store()
+    try:
+        return store.rename_dataset(dataset_id, req.name)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/api/datasets/{dataset_id}/duplicate")
+def duplicate_dataset(dataset_id: str):
+    store = get_store()
+    try:
+        return store.duplicate_dataset(dataset_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/api/datasets/{dataset_id}/archive")
+def archive_dataset(dataset_id: str, req: ArchiveDatasetRequest = Body(default=ArchiveDatasetRequest())):
+    store = get_store()
+    try:
+        return store.archive_dataset(dataset_id, req.archived)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/api/datasets/{dataset_id}/reprocess")
+def reprocess_dataset(dataset_id: str):
+    store = get_store()
+    try:
+        return store.reprocess_dataset(dataset_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/api/datasets/{dataset_id}/transform")
+def transform_dataset_path(dataset_id: str, req: TransformDatasetRequest = Body(...)):
+    store = get_store()
+    try:
+        return store.apply_transformations(dataset_id, req.operations)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Transformation failed: {exc}") from exc
+
+
+@router.post("/api/dataset/transform")
+def transform_dataset_query(dataset_id: str = Query(default="demo-sales"), req: TransformDatasetRequest = Body(...)):
+    actual_id = req.dataset_id or dataset_id
+    store = get_store()
+    try:
+        return store.apply_transformations(actual_id, req.operations)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Transformation failed: {exc}") from exc
+
+
+@router.get("/api/datasets/{dataset_id}/transformations")
+def get_transformations_path(dataset_id: str):
+    store = get_store()
+    return store.get_transformation_history(dataset_id)
+
+
+@router.get("/api/dataset/transformations")
+def get_transformations_query(dataset_id: str = Query(default="demo-sales")):
+    store = get_store()
+    return store.get_transformation_history(dataset_id)
 
 
 @router.delete("/api/datasets/{dataset_id}")

@@ -261,3 +261,183 @@ def clean_dataset_frame(
     }
 
     return frame, schema, cleaning_report
+
+
+def apply_transformation_pipeline(
+    frame: pd.DataFrame,
+    operations: List[Dict[str, Any]]
+) -> Tuple[pd.DataFrame, List[Dict[str, Any]], List[str]]:
+    """
+    Applies interactive user data preparation transformations to a DataFrame.
+    Supports rename_column, remove_column, filter_rows, replace_value,
+    handle_missing, remove_duplicates, convert_type, and calculated_column.
+    """
+    df = frame.copy()
+    history: List[Dict[str, Any]] = []
+    actions_taken: List[str] = []
+
+    for op in operations:
+        op_type = op.get("type")
+        timestamp = op.get("timestamp") or ""
+
+        try:
+            if op_type == "rename_column":
+                old_name = str(op.get("old_name", "")).strip()
+                new_name = str(op.get("new_name", "")).strip()
+                if old_name in df.columns and new_name and new_name != old_name:
+                    df = df.rename(columns={old_name: new_name})
+                    desc = f"Renamed column '{old_name}' to '{new_name}'"
+                    actions_taken.append(desc)
+                    history.append({**op, "description": desc, "status": "success"})
+
+            elif op_type == "remove_column":
+                col = str(op.get("column", "")).strip()
+                if col in df.columns and len(df.columns) > 1:
+                    df = df.drop(columns=[col])
+                    desc = f"Removed column '{col}'"
+                    actions_taken.append(desc)
+                    history.append({**op, "description": desc, "status": "success"})
+
+            elif op_type == "filter_rows":
+                col = str(op.get("column", "")).strip()
+                operator = op.get("operator", "eq")
+                val = op.get("value")
+                if col in df.columns and val is not None:
+                    before_len = len(df)
+                    if operator == "eq":
+                        df = df[df[col].astype(str) == str(val)]
+                    elif operator == "ne":
+                        df = df[df[col].astype(str) != str(val)]
+                    elif operator == "contains":
+                        df = df[df[col].astype(str).str.contains(str(val), case=False, regex=False, na=False)]
+                    elif operator == "not_contains":
+                        df = df[~df[col].astype(str).str.contains(str(val), case=False, regex=False, na=False)]
+                    elif operator in ("gt", "gte", "lt", "lte"):
+                        numeric_s = pd.to_numeric(df[col], errors="coerce")
+                        num_val = float(val)
+                        if operator == "gt":
+                            df = df[numeric_s > num_val]
+                        elif operator == "gte":
+                            df = df[numeric_s >= num_val]
+                        elif operator == "lt":
+                            df = df[numeric_s < num_val]
+                        elif operator == "lte":
+                            df = df[numeric_s <= num_val]
+                    dropped = before_len - len(df)
+                    desc = f"Filtered '{col}' ({operator} '{val}'), removed {dropped:,} rows"
+                    actions_taken.append(desc)
+                    history.append({**op, "description": desc, "rows_removed": dropped, "status": "success"})
+
+            elif op_type == "replace_value":
+                col = str(op.get("column", "")).strip()
+                find_val = op.get("find")
+                repl_val = op.get("replace", "")
+                if col in df.columns:
+                    mask = df[col].astype(str) == str(find_val)
+                    replaced_count = int(mask.sum())
+                    df.loc[mask, col] = repl_val
+                    desc = f"Replaced '{find_val}' with '{repl_val}' in '{col}' ({replaced_count} values)"
+                    actions_taken.append(desc)
+                    history.append({**op, "description": desc, "replaced_count": replaced_count, "status": "success"})
+
+            elif op_type == "handle_missing":
+                col = str(op.get("column", "")).strip()
+                strategy = op.get("strategy", "drop")
+                if col in df.columns:
+                    missing_count = int(df[col].isna().sum())
+                    if strategy == "drop":
+                        df = df.dropna(subset=[col])
+                        desc = f"Dropped {missing_count} rows with missing values in '{col}'"
+                    elif strategy == "mean":
+                        mean_val = pd.to_numeric(df[col], errors="coerce").mean()
+                        df[col] = df[col].fillna(round(mean_val, 2) if pd.notna(mean_val) else 0)
+                        desc = f"Imputed {missing_count} missing values in '{col}' with mean ({round(mean_val, 2) if pd.notna(mean_val) else 0})"
+                    elif strategy == "median":
+                        med_val = pd.to_numeric(df[col], errors="coerce").median()
+                        df[col] = df[col].fillna(round(med_val, 2) if pd.notna(med_val) else 0)
+                        desc = f"Imputed {missing_count} missing values in '{col}' with median ({round(med_val, 2) if pd.notna(med_val) else 0})"
+                    elif strategy == "mode":
+                        mode_s = df[col].mode(dropna=True)
+                        mode_val = mode_s.iloc[0] if not mode_s.empty else "Unknown"
+                        df[col] = df[col].fillna(mode_val)
+                        desc = f"Imputed {missing_count} missing values in '{col}' with mode ('{mode_val}')"
+                    elif strategy == "constant":
+                        const_val = op.get("constant_value", "")
+                        df[col] = df[col].fillna(const_val)
+                        desc = f"Imputed {missing_count} missing values in '{col}' with constant '{const_val}'"
+                    else:
+                        desc = f"Unknown missing handling strategy '{strategy}'"
+                    actions_taken.append(desc)
+                    history.append({**op, "description": desc, "status": "success"})
+
+            elif op_type == "remove_duplicates":
+                subset = op.get("subset")
+                if subset and isinstance(subset, list):
+                    subset = [c for c in subset if c in df.columns]
+                    subset = subset if len(subset) > 0 else None
+                before_len = len(df)
+                df = df.drop_duplicates(subset=subset, keep="first")
+                dups_removed = before_len - len(df)
+                desc = f"Removed {dups_removed:,} duplicate rows" + (f" on columns {subset}" if subset else "")
+                actions_taken.append(desc)
+                history.append({**op, "description": desc, "duplicates_removed": dups_removed, "status": "success"})
+
+            elif op_type == "convert_type":
+                col = str(op.get("column", "")).strip()
+                target_type = op.get("target_type", "string")
+                if col in df.columns:
+                    if target_type == "numeric":
+                        clean_s = df[col].astype(str).str.replace(r"[, $₹€£%¥]", "", regex=True)
+                        df[col] = pd.to_numeric(clean_s, errors="coerce")
+                    elif target_type == "datetime":
+                        df[col] = pd.to_datetime(df[col], errors="coerce", format="mixed")
+                    elif target_type == "boolean":
+                        df[col] = df[col].astype(str).str.strip().str.lower().map({
+                            "true": True, "1": True, "yes": True, "y": True, "t": True,
+                            "false": False, "0": False, "no": False, "n": False, "f": False
+                        })
+                    else:
+                        df[col] = df[col].astype(str)
+                    desc = f"Converted column '{col}' to {target_type}"
+                    actions_taken.append(desc)
+                    history.append({**op, "description": desc, "status": "success"})
+
+            elif op_type == "calculated_column":
+                new_col = str(op.get("new_column", "")).strip()
+                col1 = str(op.get("col1", "")).strip()
+                operator = op.get("operator", "+")
+                col2 = str(op.get("col2", "")).strip()
+                const_val = op.get("value")
+
+                if new_col and col1 in df.columns:
+                    s1 = pd.to_numeric(df[col1], errors="coerce").fillna(0)
+                    if col2 and col2 in df.columns:
+                        s2 = pd.to_numeric(df[col2], errors="coerce").fillna(0)
+                    elif const_val is not None:
+                        s2 = float(const_val)
+                    else:
+                        s2 = 0
+
+                    if operator == "+":
+                        df[new_col] = s1 + s2
+                    elif operator == "-":
+                        df[new_col] = s1 - s2
+                    elif operator == "*":
+                        df[new_col] = s1 * s2
+                    elif operator == "/":
+                        denom = s2 if not isinstance(s2, pd.Series) else s2.replace(0, np.nan)
+                        df[new_col] = (s1 / denom).fillna(0)
+                    elif operator == "%":
+                        denom = s2 if not isinstance(s2, pd.Series) else s2.replace(0, np.nan)
+                        df[new_col] = ((s1 / denom) * 100).fillna(0)
+                    else:
+                        df[new_col] = s1
+
+                    desc = f"Created calculated column '{new_col}' = '{col1}' {operator} '{col2 or const_val}'"
+                    actions_taken.append(desc)
+                    history.append({**op, "description": desc, "status": "success"})
+
+        except Exception as e:
+            history.append({**op, "status": "error", "error": str(e)})
+
+    return df, history, actions_taken

@@ -235,3 +235,116 @@ def test_system_developer_health(client):
     assert health["database"]["tables"]["users"] >= 1
     assert health["database"]["tables"]["workspaces"] >= 1
     assert "uptime_seconds" in health["system"]
+
+
+def test_dataset_lifecycle_and_interactive_cleaning(client):
+    # 1. List datasets
+    datasets = client.get("/api/datasets").json()
+    assert isinstance(datasets, list)
+    assert len(datasets) >= 1
+    assert any(d["dataset_id"] == "demo-sales" for d in datasets)
+
+    # 2. Load sample dataset
+    load_res = client.post("/api/datasets/load-sample/hr")
+    assert load_res.status_code == 200
+    hr_data = load_res.json()
+    ds_id = hr_data["dataset_id"]
+    assert ds_id != "demo-sales"
+
+    # 3. Rename dataset
+    rename_res = client.patch(f"/api/datasets/{ds_id}/rename", json={"name": "Workforce Analytics 2026.csv"})
+    assert rename_res.status_code == 200
+    assert rename_res.json()["name"] == "Workforce Analytics 2026.csv"
+
+    # 4. Duplicate dataset
+    dup_res = client.post(f"/api/datasets/{ds_id}/duplicate")
+    assert dup_res.status_code == 200
+    dup_id = dup_res.json()["dataset_id"]
+    assert dup_id != ds_id
+
+    # 5. Archive and Unarchive
+    arch_res = client.post(f"/api/datasets/{ds_id}/archive", json={"archived": True})
+    assert arch_res.status_code == 200
+    assert arch_res.json()["status"] == "archived"
+
+    unarch_res = client.post(f"/api/datasets/{ds_id}/archive", json={"archived": False})
+    assert unarch_res.status_code == 200
+    assert unarch_res.json()["status"] == "ready"
+
+    # 6. Interactive Transformation pipeline
+    transform_res = client.post(f"/api/datasets/{ds_id}/transform", json={
+        "operations": [
+            {"type": "rename_column", "old_name": "department", "new_name": "dept_division"},
+            {"type": "filter_rows", "column": "salary", "operator": "gt", "value": 30000},
+            {"type": "calculated_column", "new_column": "bonus_est", "col1": "salary", "operator": "*", "value": 0.1}
+        ]
+    })
+    assert transform_res.status_code == 200
+    t_data = transform_res.json()
+    assert "actions" in t_data
+    assert len(t_data["actions"]) >= 2
+    assert "dept_division" in [c["name"] for c in t_data["report"]["schema"]]
+    assert "bonus_est" in [c["name"] for c in t_data["report"]["schema"]]
+
+    # 7. Get transformation history
+    hist = client.get(f"/api/datasets/{ds_id}/transformations").json()
+    assert isinstance(hist, list)
+    assert len(hist) >= 1
+
+    # 8. Clean up
+    del_res = client.delete(f"/api/datasets/{ds_id}")
+    assert del_res.status_code == 200
+    client.delete(f"/api/datasets/{dup_id}")
+
+
+def test_api_keys_and_notification_settings(client):
+    # 1. Sign in as admin
+    login_res = client.post("/api/auth/login", json={
+        "email": "admin@insightops.ai",
+        "password": "Password123!"
+    })
+    assert login_res.status_code == 200
+    token = login_res.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # 2. Create API key
+    key_res = client.post("/api/auth/api-keys", json={"name": "ETL Ingestion Token"}, headers=headers)
+    assert key_res.status_code == 200
+    key_data = key_res.json()
+    assert "token" in key_data
+    assert key_data["token"].startswith("iop_live_")
+    key_id = key_data["id"]
+
+    # 3. List API keys
+    list_res = client.get("/api/auth/api-keys", headers=headers)
+    assert list_res.status_code == 200
+    assert any(k["id"] == key_id for k in list_res.json())
+
+    # 4. Authenticate using the generated API Key
+    api_key_headers = {"Authorization": f"Bearer {key_data['token']}"}
+    me_res = client.get("/api/auth/me", headers=api_key_headers)
+    assert me_res.status_code == 200
+    assert me_res.json()["email"] == "admin@insightops.ai"
+
+    # 5. Get and update notification settings
+    notif_get = client.get("/api/auth/notification-settings", headers=headers)
+    assert notif_get.status_code == 200
+
+    notif_put = client.put("/api/auth/notification-settings", json={
+        "slack_webhook_url": "https://hooks.slack.com/services/T00/B00/X00",
+        "email_enabled": True,
+        "frequency": "daily"
+    }, headers=headers)
+    assert notif_put.status_code == 200
+    assert notif_put.json()["frequency"] == "daily"
+    assert notif_put.json()["slack_webhook_url"] == "https://hooks.slack.com/services/T00/B00/X00"
+
+    # 6. Revoke API key
+    del_key = client.delete(f"/api/auth/api-keys/{key_id}", headers=headers)
+    assert del_key.status_code == 200
+
+    # 7. Verify revoked key no longer authenticates
+    fail_me = client.get("/api/auth/me", headers=api_key_headers)
+    assert fail_me.status_code == 401
+
+

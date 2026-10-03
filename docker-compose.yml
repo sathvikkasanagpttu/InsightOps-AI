@@ -31,6 +31,11 @@ services:
     environment:
       - DATABASE_URL=postgresql://insightops:insightops_password@db:5432/insightops_db
       - JWT_SECRET_KEY=insightops-secret-key-change-in-production-2026-bi-saas-enterprise
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     depends_on:
       db:
         condition: service_healthy

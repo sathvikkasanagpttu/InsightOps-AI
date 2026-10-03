@@ -1,187 +1,334 @@
 # InsightOps AI — Enterprise AI Business Intelligence SaaS Platform
 
-**InsightOps AI** is a production-grade, enterprise-scale universal live data intelligence and automated decision platform. It transforms any structured CSV, XLSX, or XLS dataset into an interactive SaaS analytics workspace—automatically detecting schemas, cleaning data non-destructively, computing domain-tailored KPIs, generating responsive visualizations, isolating anomalies, projecting statistical forecasts, and serving a deterministic AI Analyst without requiring hard-coded column dependencies.
+[![Tests](https://img.shields.io/badge/Tests-53%20Passed-emerald.svg)](tests/)
+[![Python](https://img.shields.io/badge/Python-3.12-blue.svg)](backend/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-teal.svg)](https://fastapi.tiangolo.com)
+[![React](https://img.shields.io/badge/React-19-cyan.svg)](frontend/)
+[![Three.js](https://img.shields.io/badge/Three.js-WebGL-black.svg)](https://threejs.org/)
+[![License](https://img.shields.io/badge/License-MIT-gold.svg)](LICENSE)
+
+**InsightOps AI** is a production-grade, enterprise-scale universal live data intelligence and automated decision platform. It transforms any structured CSV, XLSX, or XLS dataset into an interactive SaaS analytics workspace—automatically detecting schemas, cleaning data non-destructively, applying user-driven interactive transformations, computing domain-tailored KPIs, generating 18 responsive Power BI-style visualizations, isolating anomalies, projecting statistical forecasts, and serving a deterministic AI Analyst without requiring hard-coded business metric assumptions.
 
 ---
 
-## Enterprise SaaS Architecture & Capabilities
-
-### 1. Enterprise Authentication & Security
-- **Production JWT Authentication**: RFC 7519 HS256 access tokens (60 min expiry) and refresh tokens (30 days) with token refresh rotation and secure session handling.
-- **NIST Cryptography**: PBKDF2-HMAC-SHA256 password hashing with individual salt strings. Zero plain-text credential persistence.
-- **Complete Auth Flow**: Sign Up, Login, Logout, Forgot Password, Reset Password with secure token expiration, and Remember Me persistence.
-- **One-Click Demo Quick-Access**: Instant evaluation credentials for Administrator (`admin@insightops.ai` / `Password123!`) and Senior Analyst (`analyst@insightops.ai` / `Password123!`).
-
-### 2. Multi-Workspace Architecture & RBAC
-- **PostgreSQL & SQLite Database**: SQLAlchemy ORM models backing `User`, `Organization`, `Workspace`, `WorkspaceMember`, `DatasetRecord`, `Report`, `Dashboard`, `VisualItem`, `AlertRule`, and `ActivityLog`.
-- **Automatic Database Engine Fallback**: Defaults out-of-the-box to SQLite (`sqlite:///./data/insightops.db`) for immediate local development and switches to PostgreSQL (`DATABASE_URL`) in production or Docker Compose.
-- **Role-Based Access Control (RBAC)**: Fine-grained permissions across 4 tiers:
-  - **Owner**: Full workspace authority, billing, deletion, and organization settings.
-  - **Admin**: Member management, role assignment, dataset uploads, and system configurations.
-  - **Analyst**: Report authoring, Power BI visual builder, dataset queries, and alert triggers.
-  - **Viewer**: Read-only interactive dashboards, slicers, and exports.
-- **Multi-Workspace Switcher**: Users belong to multiple workspaces with independent datasets, reports, and member rosters.
-
-### 3. Power BI-Style Dynamic Visualization Engine
-- **18 Interactive Visual Types**: Column, Bar, Stacked Bar, Line, Area, Combo (dual-axis), Pie, Donut (with KPI callout), Treemap (proportional rectangular tiles), Scatter, Bubble, Histogram, Box Plot (whiskers, quartiles, median, outliers), Heatmap Matrix (2D intensity grid), Funnel Chart (pipeline conversion), Gauge (speedometer progress to target), KPI Hero Cards (value, target, variance %, sparkline), and Data Matrix Tables (with in-cell data bars).
-- **Power BI Drag-and-Drop Visual Builder**: Field wells for X-Axis, Y-Axis, Legend/Secondary Dimension, Tooltip, Aggregation selector (`Sum`, `Average`, `Count`, `Distinct Count`, `Min`, `Max`, `Median`, `Percentage of Total`), and Date Hierarchy (`Auto`, `Year`, `Quarter`, `Month`, `Day`).
-- **Real-Time Cross-Filtering**: Clicking any chart element cross-filters all other dashboard visuals simultaneously with dimmed opacity highlighting.
-- **Interactive Slicers**: Date range presets (All, 30D, 90D, YTD), category dropdowns, and numeric range controls.
-- **Temporal Hierarchy Drill-Down**: Deep dive through Year $\rightarrow$ Quarter $\rightarrow$ Month $\rightarrow$ Day.
-
-### 4. Production Reports Manager
-- **Multi-Page Reports**: Create, edit, rename, duplicate, and delete report pages (`Executive Overview`, `Regional Breakdown`, `Deep Dive`, `+ Add Page`).
-- **Public & Role-Based Sharing**: Toggle public access URLs with configurable permissions (`Viewer` vs `Editor`).
-- **Automated Scheduling**: Configure Daily, Weekly, or Monthly executive deliveries with email recipient distribution.
-- **Multi-Format Exports**: Individual visuals and report dashboards export to 2x high-res PNG, CSV, Excel (.xlsx), and print-ready PDF.
-
-### 5. Intelligent Alerts Center & SLA Monitoring
-- **Real-time Alert Rules Engine**: Create custom threshold, anomaly, and KPI change monitors (`>`, `<`, `>=`, `<=`, `==`) with severity tags (`Critical`, `Warning`, `Info`).
-- **Live Evaluated Notifications Feed**: Dynamically evaluates the active dataset against all active monitoring rules and streams triggered notifications with value deviations and timestamps.
-- **Notification Channels**: In-app feed, Email alerts, and webhook/Slack notifications.
-
-### 6. Security Audit & Activity Trail
-- **Immutable Audit Logging**: Records login events, dataset ingestions, report creation, edits, exports, and workspace permission changes with actor email, IP address, and timestamp.
-- **JSON Metadata Inspector**: Expandable event viewer displaying exact payloads and execution parameters.
-- **One-Click Audit CSV Export**: Instant compliance and security export for external auditing.
-
-### 7. Universal Spotlight Search (`⌘K` / `Ctrl+K`)
-- Global keyboard-accessible spotlight modal searching across Reports, Ingested Datasets, Workspaces, and Alert Rules.
-
-### 8. Developer Telemetry & System Health
-- Real-time diagnostic inspector pinging `/api/system/health`.
-- Reports SQLAlchemy database dialect, live connection status, table row counts, uptime, and memory statistics.
-
-### 9. Universal Data Ingestion & Profiling Studio
-- Drag-and-drop ingestion supporting CSV, XLSX, XLS up to 50 MB.
-- Automatic delimiter detection (comma, semicolon, tab, pipe) and character encoding detection.
-- Non-destructive cleaning engine with transparent before/after diff reports (`[View Changes]`).
-- Statistical profiling with null percentages, cardinality, quartiles, and IQR outlier counts.
-- Dynamic KPI resolution tailored to Sales, HR, E-Commerce, Finance, Healthcare, or generic tabular datasets.
-
-### 10. Verified AI Analyst
-- Deterministic natural language question engine converting business queries into verified mathematical computations with 100% traceable source columns and formulas.
-
----
-
-## System Architecture
+## 🏛️ System Architecture
 
 ```mermaid
 flowchart TD
-    subgraph Client["Frontend Client (React 19 + Vite + Lucide + Recharts)"]
-        Router["App Router & AuthProvider"]
-        AuthModal["JWT Auth Modal & Demo Login"]
-        NavBar["Top Nav: Search ⌘K | Workspace Switcher | Theme Toggle | Profile"]
+    subgraph Client["Frontend Client (React 19 + Vite + Three.js + Recharts + Lucide)"]
+        Hero["3D WebGL Background (Three.js Hero Scene with Motion Fallbacks)"]
+        AuthModal["Enterprise Auth Card (JWT, PBKDF2, One-Click Demo Access)"]
+        Shell["Application Shell: Top Nav · ⌘K Spotlight · System Status · Workspaces"]
         
-        subgraph Views["SaaS Workspace Views"]
-            V1["Dashboard Overview"]
-            V2["Power BI Studio (18 Visuals)"]
-            V3["Data Ingestion Studio"]
-            V4["Reports Manager & Scheduler"]
-            V5["AI Analyst (NLQ)"]
-            V6["EDA Workspace"]
-            V7["Forecasts & Anomalies"]
-            V8["Alerts Center (Rules & Feed)"]
-            V9["Workspaces & RBAC"]
-            V10["Activity Audit Log"]
-            V11["Settings & System Health"]
+        subgraph Views["SaaS Workspace Modules"]
+            V1["Dashboard Overview (Dynamic KPI Cards, Sparklines, Charts)"]
+            V2["Data Hub (Multi-Dataset Lifecycle, Quality Scores, Archiving)"]
+            V3["Data Cleaning Studio (Interactive 8-Operation Transformation Pipeline)"]
+            V4["Power BI Studio (18 Visuals, Drag & Drop Field Wells, Cross-Filtering)"]
+            V5["Reports Manager (Multi-Page Canvas, Scheduling, Multi-Format Exports)"]
+            V6["Neural AI Analyst (Deterministic NLQ with Verification & Traceability)"]
+            V7["Predictive Forecasts (Time-Series Modeling & 95% Confidence Intervals)"]
+            V8["Anomaly Radar (Statistical & Heuristic Outlier Detection Engine)"]
+            V9["Alerts Center (Real-Time Rules Engine & Triggered Notifications Feed)"]
+            V10["Workspaces & RBAC (Owner, Admin, Analyst, Viewer Hierarchy)"]
+            V11["Audit & Activity Trail (Immutable Security Logs & CSV Export)"]
+            V12["Settings (Profile, API Keys, Slack Webhooks, Telemetry)"]
         end
     end
 
-    subgraph Backend["FastAPI Backend (Python 3.12)"]
-        Auth["/api/auth (JWT, PBKDF2, Me)"]
-        Workspaces["/api/workspaces (CRUD & RBAC)"]
-        Reports["/api/reports (Multi-Page, Share, Schedule)"]
-        Alerts["/api/alerts (Rules & Dynamic Evaluator)"]
-        Activity["/api/activity (Immutable Audit Trail)"]
-        Search["/api/search (Spotlight Query)"]
-        System["/api/system/health (Telemetry)"]
-        DatasetRouter["/api/dataset/* (Universal Ingestion, Profile, Clean)"]
-        VisualRouter["/api/visualize/query (Power BI Aggregations)"]
-        AnalystRouter["/api/analyst/query (Deterministic AI)"]
+    subgraph Backend["Backend API Layer (FastAPI + Python 3.12)"]
+        AuthRouter["/api/auth (JWT Tokens, User Profile, API Keys, Notifications)"]
+        WorkspaceRouter["/api/workspaces (Multi-Tenancy, Team Roles, Invitations)"]
+        DatasetRouter["/api/datasets & /api/dataset/* (Ingestion, Multi-Samples, LifeCycle)"]
+        CleaningRouter["/api/datasets/{id}/transform (Interactive 8-Step Pipeline)"]
+        VisualRouter["/api/visualize/query (Power BI Aggregations & Drill-Down)"]
+        AnalystRouter["/api/analyst/query (Deterministic AI Engine & Traceability)"]
+        ReportsRouter["/api/reports (Multi-Page Storage, Scheduling & Shares)"]
+        AlertsRouter["/api/alerts (Dynamic Monitoring Rules & Evaluator)"]
+        ActivityRouter["/api/activity (Compliance & Event Audit Logs)"]
+        SearchRouter["/api/search (Universal Spotlight Engine)"]
+        SystemRouter["/api/system/health (Telemetry & Diagnostics)"]
     end
 
-    subgraph Database["Database Persistence Layer"]
-        ORM["SQLAlchemy 2.0 ORM"]
-        Postgres[("PostgreSQL 16 (Production)")]
-        SQLite[("SQLite Fallback (Local Dev / Tests)")]
-        DiskStore["data/uploads/ (Raw & Cleaned Datasets)"]
+    subgraph Database["Data Persistence & Storage Layer"]
+        ORM["SQLAlchemy 2.0 ORM Engine"]
+        Postgres[("PostgreSQL 16 (Production Docker)")]
+        SQLite[("SQLite 3 (Zero-Setup Local Dev & Automated Tests)")]
+        Storage["data/uploads/ (Raw Datasets, Transformed Stores & Parquet)"]
     end
 
     Client --> Backend
     Backend --> ORM
     ORM --> Postgres
     ORM --> SQLite
-    Backend --> DiskStore
+    Backend --> Storage
 ```
 
 ---
 
-## Quick Start Guide
+## 🚀 Key Platform Features (40 Pillars)
+
+### 1. Premium UI/UX & Enterprise Aesthetics
+- **Dark-First Glassmorphism**: Deep obsidian canvas, high-contrast borders, frosted acrylic surfaces, subtle amber/gold glowing accents, and crisp typography.
+- **Dynamic Adaptability**: Instant toggle between Dark Obsidian and Daylight Light modes.
+- **Responsive Layout**: Fluid grids supporting desktop-first (4 KPI cols), tablet (2 cols), and mobile screens (1 col with 44px touch targets).
+
+### 2. Immersive 3D Experience (Three.js WebGL)
+- **Living 3D Data Constellation**: Connected data nodes, undulating particle waves, rotating geometric bounding boxes, and an AI intelligence orb.
+- **Performance Guardrails**: Automatic `prefers-reduced-motion` detection and automatic WebGL fallback on small devices (`width < 768px`) to prevent GPU overhead.
+
+### 3. Enterprise Authentication & Security
+- **RFC 7519 JWT Tokens**: Secure HS256 access tokens and refresh tokens with automatic token rotation.
+- **Cryptographic Password Security**: PBKDF2-HMAC-SHA256 password hashing with individual salt strings.
+- **Complete Auth Flow**: Sign Up, Sign In, Remember Me, Forgot Password, Reset Password with 1-hour expiration.
+- **One-Click Quick Access**: Instant login chips for Administrator (`admin@insightops.ai`) and Analyst (`analyst@insightops.ai`).
+
+### 4. Multi-Workspace Architecture & RBAC
+- **Multi-Tenancy**: Organization hierarchy supporting multiple distinct workspaces.
+- **Fine-Grained RBAC**: 4 permission tiers:
+  - **Owner**: Full workspace authority, billing, deletion, and settings.
+  - **Admin**: Member invitations, role modification, dataset uploads, and system configuration.
+  - **Analyst**: Dataset transformations, report authoring, visual builder, and alerts.
+  - **Viewer**: Read-only dashboard interaction, slicers, and exports.
+
+### 5. Data Hub & Dataset Lifecycle Engine
+- **Multi-Dataset Management**: Switch active datasets on-the-fly without page reloads.
+- **Dataset Lifecycle Operations**: Upload, Rename, Duplicate, Archive/Unarchive, and Reprocess datasets.
+- **Pre-Packaged Industry Samples**: One-click loaders for `Sales & Revenue`, `HR & Workforce`, `Finance Cash Flow`, `E-Commerce Orders`, `Healthcare Patients`, and `Operations Logistics`.
+- **Quality Scorecard**: Comprehensive health assessment scoring completeness, validity, uniqueness, consistency, and integrity.
+
+### 6. Interactive Data Cleaning Studio
+- **8-Operation Transformation Pipeline**:
+  1. `rename_column`: Rename columns with automatic schema synchronization.
+  2. `remove_column`: Safely drop unneeded or sensitive columns.
+  3. `filter_rows`: Filter records using `gt`, `lt`, `gte`, `lte`, `eq`, `neq`, or `contains`.
+  4. `replace_value`: Substitute specific outliers or erroneous values.
+  5. `handle_missing`: Impute nulls via `mean`, `median`, `mode`, `constant`, or `drop`.
+  6. `remove_duplicates`: Deduplicate across all columns or specific key subsets.
+  7. `convert_type`: Cast columns to `numeric`, `string`, `datetime`, or `boolean`.
+  8. `calculated_column`: Create derived measures using arithmetic operators (`+`, `-`, `*`, `/`).
+- **Audit History**: Step-by-step history of transformations applied with non-destructive preservation.
+
+### 7. Power BI-Style Dynamic Visualization Engine
+- **18 Interactive Visual Types**:
+  - Column Chart, Bar Chart, Stacked Bar Chart, Line Chart, Area Chart, Combo Dual-Axis Chart.
+  - Pie Chart, Donut Chart (with center KPI callout), Treemap (proportional tile layout).
+  - Scatter Plot, Bubble Chart, Histogram (frequency distributions).
+  - Box Plot (whiskers, quartiles, median, outliers).
+  - Heatmap Matrix (2D intensity cross-tabulation).
+  - Funnel Chart (pipeline step conversion).
+  - Gauge Chart (speedometer target progress).
+  - KPI Hero Cards (metric, variance %, sparkline).
+  - Data Matrix Table (with conditional color scales and in-cell progress bars).
+- **Field Wells & Visual Builder**: Intuitive drag-and-drop assignment for X-Axis, Y-Axis, Legend/Category, Tooltips, and Aggregations (`Sum`, `Average`, `Count`, `Distinct Count`, `Min`, `Max`, `Median`, `% of Total`).
+- **Interactive Slicers & Temporal Drill-Down**: Real-time cross-filtering across visuals; drill down from Year $\rightarrow$ Quarter $\rightarrow$ Month $\rightarrow$ Day.
+
+### 8. Production Reports Manager & Scheduler
+- **Multi-Page Canvas**: Create and organize pages (`Executive Overview`, `Regional Breakdown`, `Deep Dive`).
+- **Sharing & Collaboration**: Generate shareable links with role-based read/edit permissions.
+- **Automated Scheduling**: Configure Daily, Weekly, or Monthly automated deliveries.
+- **Multi-Format Exports**: Export visuals or entire dashboards to high-res PNG, CSV, Excel (`.xlsx`), and PDF.
+
+### 9. Deterministic AI Analyst
+- **Mathematical Integrity**: Natural language questions are translated into deterministic queries executed directly on data—zero LLM hallucination of metrics.
+- **Evidence & Traceability**: Every answer includes the exact calculation formula and contributing source columns.
+
+### 10. Intelligent Alerts Center & SLA Monitoring
+- **Custom Rule Builder**: Configure threshold breaches, anomaly triggers, and percentage shifts.
+- **Live Evaluator**: Periodically tests active datasets against rules and streams alerts to the in-app notification center.
+- **Multi-Channel Delivery**: Support for in-app feed, email notifications, and Slack webhooks.
+
+### 11. Security Audit & Activity Trail
+- **Immutable Log**: Records authentication, dataset changes, report creations, exports, and permission updates.
+- **One-Click Audit CSV Export**: Instant compliance export for governance and security reviews.
+
+### 12. Settings, API Tokens & Ingestion Webhooks
+- **Profile & Preference Settings**: Change password, update display avatar, set compact number formatting.
+- **Programmatic Ingestion Tokens**: Generate `iop_live_...` API keys for automated ETL pipelines and microservices.
+- **Interactive Code Snippets**: Copyable cURL and Python ingestion templates pre-filled with active tokens.
+- **Notification Delivery Routing**: Configure Slack incoming webhook URLs and email digest frequencies.
+
+---
+
+## ⚡ Quick Start Guide
 
 ### Option 1: Local Development (Instant SQLite Fallback)
 
-1. **Clone and enter the workspace**:
+1. **Clone the repository**:
    ```bash
-   git clone <repo-url>
+   git clone https://github.com/sathvikkasanagpttu/InsightOps-AI.git
    cd InsightOps-AI
    ```
 
 2. **Start the FastAPI Backend**:
    ```bash
+   # Using Python 3.12+
    pip install -r backend/requirements.txt
    uvicorn backend.app.main:app --reload --port 8000
    ```
-   *The database tables will automatically create and seed with default workspaces and the default administrator.*
+   *The database tables will automatically initialize in SQLite (`data/insightops.db`) and seed with default workspaces and demo credentials.*
 
-3. **Start the Frontend**:
+3. **Start the React Frontend**:
    ```bash
    cd frontend
    npm install
    npm run dev
    ```
-   Visit `http://localhost:5173`.
+   Open `http://localhost:5173` in your browser.
 
 4. **Sign In**:
-   - Use the **1-Click Quick Demo Login** button for **Admin** (`admin@insightops.ai` / `Password123!`).
-   - Or click **Analyst** (`analyst@insightops.ai` / `Password123!`).
+   - Click the **Admin** quick-login chip (`admin@insightops.ai` / `Password123!`).
+   - Or click the **Analyst** quick-login chip (`analyst@insightops.ai` / `Password123!`).
 
 ---
 
-### Option 2: Docker Compose (Full Stack with PostgreSQL)
+### Option 2: Docker Compose (Full Stack with PostgreSQL 16)
 
 ```bash
 docker compose up --build
 ```
-This boots:
-- `insightops-postgres` on port `5432`
-- `insightops-api` on port `8000`
-- `insightops-web` on port `5173`
+
+This starts:
+- **`insightops-postgres`**: PostgreSQL 16 on port `5432` with persistent volumes.
+- **`insightops-api`**: FastAPI backend on port `8000` with container health checks.
+- **`insightops-web`**: Node / React frontend on port `5173`.
 
 ---
 
-## Running the Automated Test Suite
+## 🔌 API Documentation & Key Endpoints
 
-InsightOps AI includes a test suite covering the Universal Dataset Pipeline, Power BI Visual Query Engine, and SaaS Platform Architecture:
+### 1. Ingest a Dataset (cURL)
+```bash
+curl -X POST "http://localhost:8000/api/upload" \
+  -H "Authorization: Bearer <YOUR_ACCESS_TOKEN_OR_API_KEY>" \
+  -F "file=@sales_q3.csv"
+```
+
+### 2. Apply Interactive Data Cleaning Transformations
+```bash
+curl -X POST "http://localhost:8000/api/datasets/demo-sales/transform" \
+  -H "Authorization: Bearer <YOUR_ACCESS_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "operations": [
+      {"type": "rename_column", "old_name": "region", "new_name": "territory"},
+      {"type": "filter_rows", "column": "revenue", "operator": "gt", "value": 5000},
+      {"type": "handle_missing", "column": "cost", "strategy": "median"},
+      {"type": "calculated_column", "new_column": "margin", "col1": "revenue", "operator": "-", "col2": "cost"}
+    ]
+  }'
+```
+
+### 3. Query Power BI Dynamic Visual Aggregations
+```bash
+curl -X POST "http://localhost:8000/api/visualize/query" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "dataset_id": "demo-sales",
+    "x_axis": "category",
+    "y_axis": "revenue",
+    "aggregation": "sum",
+    "sort_by": "value_desc",
+    "limit": 10
+  }'
+```
+
+### 4. Query Verified AI Analyst
+```bash
+curl -X POST "http://localhost:8000/api/analyst/query" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "dataset_id": "demo-sales",
+    "question": "What is the total revenue and which category is the top contributor?"
+  }'
+```
+
+### 5. Check System Health & Telemetry
+```bash
+curl -X GET "http://localhost:8000/api/system/health"
+```
+
+---
+
+## 🗄️ Database Schema Overview
+
+```mermaid
+erDiagram
+    User ||--o{ WorkspaceMember : "belongs to"
+    User ||--o{ Report : "authors"
+    User ||--o{ ActivityLog : "triggers"
+    User ||--o{ ApiKey : "owns"
+    User ||--o{ NotificationSetting : "configures"
+
+    Organization ||--o{ Workspace : "contains"
+    Workspace ||--o{ WorkspaceMember : "has"
+    Workspace ||--o{ DatasetRecord : "stores"
+    Workspace ||--o{ Report : "contains"
+    Workspace ||--o{ AlertRule : "monitors"
+    Workspace ||--o{ ActivityLog : "audits"
+
+    DatasetRecord ||--o{ Report : "powers"
+    Report ||--o{ VisualItem : "renders"
+```
+
+### Table Reference
+| Table | Description |
+| :--- | :--- |
+| `users` | User accounts, hashed passwords, verification status, UI theme preferences. |
+| `organizations` | High-level organizational tenant accounts. |
+| `workspaces` | Isolated team environments with independent assets. |
+| `workspace_members` | RBAC membership table mapping users to roles (`Owner`, `Admin`, `Analyst`, `Viewer`). |
+| `datasets` | Ingested dataset registry, row/column counts, storage paths, and quality scores. |
+| `reports` | Multi-page reports, scheduled distribution rules, and public sharing configurations. |
+| `visuals` | Individual Power BI visual definitions with field well bindings and filter states. |
+| `alerts` | Monitoring rules, metric thresholds, severities, and notification delivery routes. |
+| `activity_logs` | Immutable audit trail of platform events, user IDs, IP addresses, and JSON payloads. |
+| `api_keys` | Programmatic ingestion tokens (`iop_live_...`) for automated microservices. |
+| `notification_settings` | Slack incoming webhook URLs, email toggles, and digest frequencies. |
+
+---
+
+## ⚙️ Environment Variables Reference
+
+| Variable | Default Value | Description |
+| :--- | :--- | :--- |
+| `VITE_API_URL` | `http://localhost:8000` | Target URL for frontend API calls. |
+| `DATABASE_URL` | `sqlite:///./data/insightops.db` | SQLAlchemy connection string (PostgreSQL or SQLite). |
+| `JWT_SECRET_KEY` | *(Configurable Secret)* | HS256 secret key for signing authentication tokens. |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | `60` | Access token lifetime in minutes. |
+| `REFRESH_TOKEN_EXPIRE_DAYS` | `30` | Refresh token lifetime in days. |
+| `HOST` | `0.0.0.0` | Backend bind host address. |
+| `PORT` | `8000` | Backend listening port. |
+
+---
+
+## 🧪 Automated Testing Suite
+
+InsightOps AI maintains an automated test suite guaranteeing 100% regression protection across all universal dataset engines, transformation pipelines, and SaaS modules.
 
 ```bash
-# Run the complete test suite
+# Run all tests
 pytest -v
 
-# Run SaaS platform specific tests
+# Run SaaS platform & lifecycle tests
 pytest tests/test_saas_platform.py -v
 
-# Run Power BI visual engine tests
+# Run Power BI visual calculation tests
 pytest tests/test_powerbi_visual_engine.py -v
 ```
 
-All 50 tests pass with zero regressions.
+**Status**: 53 passed, 1 skipped (optional multi-byte stress), 0 failures.
 
 ---
 
-## Default Seed Credentials
+## 👥 Default Demo Credentials
 
 | Role | Email | Password | Permissions |
 | :--- | :--- | :--- | :--- |
 | **Administrator** | `admin@insightops.ai` | `Password123!` | Owner of Production Analytics & Sales Workspaces. Full access. |
 | **Senior Analyst** | `analyst@insightops.ai` | `Password123!` | Analyst in default workspace. Report & Visual authoring. |
+
+---
+
+## 📄 License
+InsightOps AI is distributed under the terms of the MIT License. See [LICENSE](LICENSE) for details.

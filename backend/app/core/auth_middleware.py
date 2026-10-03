@@ -2,7 +2,7 @@ from typing import List, Optional
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
-from ..db.models import User, WorkspaceMember
+from ..db.models import ApiKey, User, WorkspaceMember
 from ..db.session import get_db
 from .security import decode_jwt_token
 
@@ -19,6 +19,21 @@ def get_current_user(
         )
 
     token = authorization.split(" ")[1].strip()
+
+    # Check for programmatic Ingestion API Key (iop_live_...)
+    if token.startswith("iop_live_"):
+        api_key_rec = db.query(ApiKey).filter(ApiKey.token == token).first()
+        if not api_key_rec:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or revoked API Key.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        user = db.query(User).filter(User.id == api_key_rec.user_id).first()
+        if not user or not user.is_active:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User account not found or deactivated.")
+        return user
+
     payload = decode_jwt_token(token)
     if not payload or payload.get("type") != "access":
         raise HTTPException(
@@ -47,6 +62,13 @@ def get_optional_user(
     if not authorization or not authorization.startswith("Bearer "):
         return None
     token = authorization.split(" ")[1].strip()
+
+    if token.startswith("iop_live_"):
+        api_key_rec = db.query(ApiKey).filter(ApiKey.token == token).first()
+        if api_key_rec:
+            return db.query(User).filter(User.id == api_key_rec.user_id, User.is_active == True).first()
+        return None
+
     payload = decode_jwt_token(token)
     if not payload or payload.get("type") != "access":
         return None
@@ -54,6 +76,7 @@ def get_optional_user(
     if not user_id:
         return None
     return db.query(User).filter(User.id == user_id, User.is_active == True).first()
+
 
 
 def check_workspace_permission(

@@ -20,6 +20,8 @@ import ReportsManagerView from "./components/saas/ReportsManagerView";
 import AlertsCenterView from "./components/saas/AlertsCenterView";
 import ActivityLogView from "./components/saas/ActivityLogView";
 import ProfileSettingsView from "./components/saas/ProfileSettingsView";
+import DataHubView from "./components/saas/DataHubView";
+import DataCleaningStudio from "./components/saas/DataCleaningStudio";
 
 // Enterprise UI Components
 import AIAnalystDrawer from "./components/ui/AIAnalystDrawer";
@@ -42,8 +44,9 @@ const navGroups = [
     category: "CORE ANALYTICS",
     items: [
       { id: "overview", label: "Dashboard", icon: BarChart3 },
+      { id: "datahub", label: "Data Hub", icon: Database, badge: "Hub" },
+      { id: "data", label: "Data Studio", icon: Sliders },
       { id: "visuals", label: "BI Studio", icon: LayoutGrid },
-      { id: "data", label: "Data Studio", icon: Database },
       { id: "reports", label: "Reports", icon: FileText },
     ]
   },
@@ -51,9 +54,9 @@ const navGroups = [
     category: "INTELLIGENCE",
     items: [
       { id: "analyst", label: "AI Analyst", icon: BrainCircuit, badge: "AI" },
-      { id: "explore", label: "Explore", icon: Search },
       { id: "forecast", label: "Forecasts", icon: TrendingUp },
       { id: "anomalies", label: "Anomalies", icon: AlertTriangle },
+      { id: "explore", label: "Explore EDA", icon: Search },
     ]
   },
   {
@@ -206,6 +209,7 @@ export default function UniversalApp({ onSignOut }) {
   const [datasetDropdownOpen, setDatasetDropdownOpen] = useState(false);
   const [wsDropdownOpen, setWsDropdownOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const [notifDropdownOpen, setNotifDropdownOpen] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem("insightops.theme") || "dark");
 
   useEffect(() => {
@@ -503,6 +507,7 @@ export default function UniversalApp({ onSignOut }) {
 
   const heading = {
     overview: ["EXECUTIVE BI SAAS", "SaaS Dashboard", "Multi-workspace operations, dataset telemetry, saved reports, and live alerts."],
+    datahub: ["ENTERPRISE DATA LAKE", "Data Hub", "Complete dataset management, preview, duplication, versions, and archiving."],
     visuals: ["POWER BI VISUAL STUDIO", "Interactive BI Studio", profile?.filename || "Multi-page report builder, drag-and-drop visual designer and cross-filtering."],
     data: ["DATA INGESTION STUDIO", "Data Studio", profile?.filename || "Inspect schema, quality and cleaning pipeline."],
     reports: ["REPORT BUILDER & LIBRARY", "Saved Reports", "Scheduled delivery, public sharing, and multi-page BI dashboards."],
@@ -549,6 +554,10 @@ export default function UniversalApp({ onSignOut }) {
           if (action === "export-clean") window.location.href = `${API_BASE}/api/dataset/export-clean${datasetQuery}`;
           if (action === "view-diff") setViewChangesOpen(true);
           if (action === "load-sample") loadSampleDataset(extra);
+          if (action === "cleaning-studio") {
+            setActiveView("data");
+            setActiveSection("Cleaning Actions");
+          }
         }}
         activeDataset={profile?.filename}
         theme={theme}
@@ -731,6 +740,88 @@ export default function UniversalApp({ onSignOut }) {
               )}
             </div>
 
+            {/* System Status Indicator */}
+            <button
+              type="button"
+              className="system-health-pill"
+              onClick={() => setActiveView("settings")}
+              title="API & Storage Engines Operational (Click to view Health)"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "4px 10px",
+                borderRadius: "20px",
+                background: "rgba(16, 185, 129, 0.12)",
+                border: "1px solid rgba(16, 185, 129, 0.3)",
+                color: "#10b981",
+                fontSize: "11px",
+                fontWeight: "600",
+                cursor: "pointer"
+              }}
+            >
+              <span className="telemetry-pulse-dot" style={{ background: "#10b981", width: "7px", height: "7px" }} />
+              <span>Operational</span>
+            </button>
+
+            {/* Notifications & Alert Center Dropdown */}
+            <div className="notifications-dropdown-wrapper" style={{ position: "relative" }}>
+              <button
+                type="button"
+                className="icon-action notif-btn"
+                onClick={() => setNotifDropdownOpen(o => !o)}
+                title="Active Notifications & SLA Alerts"
+                aria-label="View notifications"
+                style={{ position: "relative" }}
+              >
+                <Bell size={17} />
+                {alerts?.length > 0 && (
+                  <span style={{
+                    position: "absolute",
+                    top: "3px",
+                    right: "3px",
+                    width: "7px",
+                    height: "7px",
+                    borderRadius: "50%",
+                    background: "#e6c348",
+                    boxShadow: "0 0 6px #e6c348"
+                  }} />
+                )}
+              </button>
+              {notifDropdownOpen && (
+                <div className="user-dropdown-card" style={{ width: "290px", right: 0, padding: "12px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "6px" }}>
+                    <strong style={{ fontSize: "12px", color: "#f8fafc" }}>Notifications & Alerts</strong>
+                    <span style={{ fontSize: "10px", color: "#e6c348" }}>{alerts.length} Rules Active</span>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "200px", overflowY: "auto" }}>
+                    {alerts.slice(0, 4).map((a, i) => (
+                      <div key={i} style={{ padding: "6px 8px", borderRadius: "6px", background: "rgba(255,255,255,0.04)", fontSize: "11px" }}>
+                        <div style={{ color: "#e2e8f0", fontWeight: "600" }}>{a.name || "Threshold Monitor"}</div>
+                        <div style={{ color: "#94a3b8", fontSize: "10px" }}>Metric: {a.metric_column} • Severity: {a.severity}</div>
+                      </div>
+                    ))}
+                    {alerts.length === 0 && (
+                      <div style={{ padding: "10px", textAlign: "center", color: "#64748b", fontSize: "11px" }}>
+                        No triggered alerts or critical notices.
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="dropdown-link"
+                    style={{ marginTop: "8px", justifyContent: "center", color: "#e6c348", fontSize: "11px" }}
+                    onClick={() => {
+                      setActiveView("alerts");
+                      setNotifDropdownOpen(false);
+                    }}
+                  >
+                    Open Alert Center →
+                  </button>
+                </div>
+              )}
+            </div>
+
             {/* Theme Toggle */}
             <button
               className="icon-action"
@@ -884,6 +975,23 @@ export default function UniversalApp({ onSignOut }) {
             }}
             datasetId={datasetId}
             datasetProfile={profile}
+          />
+        )}
+
+        {/* 2. DATA HUB VIEW */}
+        {activeView === "datahub" && (
+          <DataHubView
+            activeDatasetId={datasetId}
+            onSelectDataset={(newId) => {
+              setDatasetId(newId);
+              localStorage.setItem("insightops.datasetId", newId);
+              loadDataset(newId);
+            }}
+            onNavigate={(view) => {
+              setActiveView(view);
+            }}
+            onUploadClick={() => fileInput.current?.click()}
+            addToast={addToast}
           />
         )}
 
@@ -1096,17 +1204,16 @@ export default function UniversalApp({ onSignOut }) {
               </div>
             )}
 
-            {/* Studio: Cleaning Actions */}
+            {/* Studio: Cleaning Actions & Interactive Preparation */}
             {activeSection === "Cleaning Actions" && (
-              <div className="quality-section">
-                <h2>Actions Applied to Clean Dataset</h2>
-                <ul>
-                  {profile.cleaning_report.actions.map(action => <li key={action}>{action}</li>)}
-                </ul>
-                <button type="button" className="btn-view-changes" onClick={() => setViewChangesOpen(true)} style={{ marginTop: 14 }}>
-                  <Eye size={15} /> View Full Before/After Changes
-                </button>
-              </div>
+              <DataCleaningStudio
+                datasetId={datasetId}
+                profile={profile}
+                schema={schema}
+                quality={quality}
+                onDatasetUpdated={() => loadDataset(datasetId)}
+                addToast={addToast}
+              />
             )}
 
             {/* Studio: Data Table Explorer */}
@@ -1594,6 +1701,8 @@ export default function UniversalApp({ onSignOut }) {
         {/* 12. SETTINGS & SYSTEM HEALTH VIEW */}
         {activeView === "settings" && (
           <ProfileSettingsView
+            activeWorkspace={activeWorkspace}
+            workspaces={workspaces}
             compactNumbers={compactNumbers}
             setCompactNumbers={setCompactNumbers}
             addToast={addToast}

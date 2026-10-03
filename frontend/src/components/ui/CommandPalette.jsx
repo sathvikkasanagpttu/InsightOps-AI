@@ -24,6 +24,7 @@ export default function CommandPalette({
   const commandItems = [
     // Navigation Views
     { id: "overview", label: "Go to Dashboard Overview", category: "Navigation", icon: BarChart3, action: () => onNavigate?.("overview") },
+    { id: "datahub", label: "Go to Data Hub (Dataset Management)", category: "Navigation", icon: Database, action: () => onNavigate?.("datahub") },
     { id: "visuals", label: "Go to BI Studio (Power BI Visuals)", category: "Navigation", icon: BarChart3, action: () => onNavigate?.("visuals") },
     { id: "data", label: "Go to Data Studio & Profiling", category: "Navigation", icon: Database, action: () => onNavigate?.("data") },
     { id: "reports", label: "Go to Reports Manager", category: "Navigation", icon: FileText, action: () => onNavigate?.("reports") },
@@ -37,9 +38,11 @@ export default function CommandPalette({
 
     // Actions
     { id: "upload", label: "Upload New Dataset (CSV / Excel)", category: "Actions", icon: Upload, action: () => onAction?.("upload") },
+    { id: "data-clean", label: "Open Interactive Data Cleaning Studio", category: "Actions", icon: Sparkles, action: () => onAction?.("cleaning-studio") },
     { id: "export-clean", label: "Download Cleaned CSV", category: "Actions", icon: Download, action: () => onAction?.("export-clean") },
     { id: "view-diff", label: "View Data Cleaning Diff Report", category: "Actions", icon: Sparkles, action: () => onAction?.("view-diff") },
     { id: "toggle-theme", label: `Switch to ${theme === "light" ? "Dark" : "Light"} Theme`, category: "Preferences", icon: theme === "light" ? Moon : Sun, action: () => onToggleTheme?.() },
+
 
     // Sample Datasets
     { id: "ds-sales", label: "Load Sample: Sales & Revenue", category: "Sample Datasets", icon: Database, action: () => onAction?.("load-sample", "sales.csv") },

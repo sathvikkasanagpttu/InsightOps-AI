@@ -2093,6 +2093,113 @@ aside.sidebar.enterprise-sidebar,
   border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
 }
 
+/* ==========================================================================
+   RESPONSIVE DESIGN & MOBILE OPTIMIZATIONS (TABLET & MOBILE)
+   ========================================================================== */
+
+/* Universal table scroll container touch optimization */
+.table-scroll,
+.saas-table-container,
+.preview-table {
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+@media (max-width: 1024px) {
+  .enterprise-workspace-canvas > .saas-dashboard-grid,
+  .enterprise-workspace-canvas > .page-panel,
+  .enterprise-workspace-canvas > .data-studio,
+  .enterprise-workspace-canvas > .analyst-panel,
+  .enterprise-workspace-canvas > .bi-studio-fullscreen {
+    padding: 18px 20px 36px !important;
+  }
+
+  .enterprise-workspace-canvas > .sample-datasets-bar,
+  .enterprise-workspace-canvas > .upload-progress,
+  .enterprise-workspace-canvas > .upload-complete,
+  .enterprise-workspace-canvas > .notice {
+    margin: 10px 20px 0 !important;
+    width: calc(100% - 40px) !important;
+  }
+
+  .dashboard-kpi-grid,
+  .stats {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .enterprise-workspace-canvas > .saas-dashboard-grid,
+  .enterprise-workspace-canvas > .page-panel,
+  .enterprise-workspace-canvas > .data-studio,
+  .enterprise-workspace-canvas > .analyst-panel,
+  .enterprise-workspace-canvas > .bi-studio-fullscreen {
+    padding: 14px 12px 28px !important;
+  }
+
+  .enterprise-workspace-canvas > .sample-datasets-bar,
+  .enterprise-workspace-canvas > .upload-progress,
+  .enterprise-workspace-canvas > .upload-complete,
+  .enterprise-workspace-canvas > .notice {
+    margin: 8px 12px 0 !important;
+    width: calc(100% - 24px) !important;
+  }
+
+  /* Single column grids on mobile devices */
+  .dashboard-kpi-grid,
+  .stats,
+  .saas-stats-grid,
+  .dynamic-kpis {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* 44px touch targets on mobile */
+  .icon-action,
+  .saas-action-btn,
+  .enterprise-btn,
+  .enterprise-nav-item,
+  .sample-dataset-chip,
+  .query-chip {
+    min-height: 44px !important;
+    min-width: 44px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  /* Responsive header controls */
+  .header-actions {
+    gap: 6px !important;
+  }
+
+  .global-search-trigger span:not(.kbd-shortcut) {
+    display: none !important;
+  }
+
+  .global-search-trigger .kbd-shortcut {
+    margin-left: 2px !important;
+  }
+
+  .enterprise-header {
+    padding: 0 12px !important;
+  }
+
+  .enterprise-status-footer {
+    flex-direction: column !important;
+    gap: 8px !important;
+    padding: 10px 14px !important;
+    height: auto !important;
+  }
+
+  .status-footer-left,
+  .status-footer-right {
+    flex-wrap: wrap !important;
+  }
+}
+
+
 
 
 

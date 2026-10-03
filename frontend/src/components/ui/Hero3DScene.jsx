@@ -19,6 +19,14 @@ export default function Hero3DScene({ mode = "hero", className = "" }) {
     const container = containerRef.current;
     if (!container) return;
 
+    // Respect user reduced-motion preference and low-power mobile devices
+    const prefersReducedMotion = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+    if (prefersReducedMotion || isMobile) {
+      if (container) container.dataset.webglFallback = "true";
+      return;
+    }
+
     let renderer;
     try {
       renderer = new THREE.WebGLRenderer({

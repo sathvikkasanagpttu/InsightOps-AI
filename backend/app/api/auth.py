@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta
+import secrets
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
@@ -13,10 +14,19 @@ from ..core.security import (
     hash_password,
     verify_password,
 )
-from ..db.models import ActivityLog, Organization, User, Workspace, WorkspaceMember
+from ..db.models import (
+    ActivityLog,
+    ApiKey,
+    NotificationSetting,
+    Organization,
+    User,
+    Workspace,
+    WorkspaceMember,
+)
 from ..db.session import get_db
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication & User"])
+
 
 
 # ==========================================
@@ -271,7 +281,7 @@ def forgot_password(req: ForgotPasswordRequest, db: Session = Depends(get_db)):
     if user:
         token = generate_random_token()
         user.reset_token = token
-        user.reset_token_expires_at = datetime.utcnow() + timedelta(hours=1)
+        user.reset_token_expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=1)
         db.add(ActivityLog(
             user_id=user.id,
             action="password_reset_request",
@@ -290,9 +300,10 @@ def forgot_password(req: ForgotPasswordRequest, db: Session = Depends(get_db)):
 
 @router.post("/reset-password")
 def reset_password(req: ResetPasswordRequest, db: Session = Depends(get_db)):
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     user = db.query(User).filter(
         User.reset_token == req.token,
-        User.reset_token_expires_at > datetime.utcnow()
+        User.reset_token_expires_at > now
     ).first()
 
     if not user:
@@ -380,3 +391,137 @@ def logout(user: User = Depends(get_current_user), db: Session = Depends(get_db)
     ))
     db.commit()
     return {"message": "Signed out successfully."}
+
+
+class CreateApiKeyRequest(BaseModel):
+    name: Optional[str] = "Ingestion API Token"
+
+
+class NotificationSettingsRequest(BaseModel):
+    slack_webhook_url: Optional[str] = None
+    email_enabled: Optional[bool] = True
+    frequency: Optional[str] = "instant"
+
+
+@router.get("/api-keys")
+def list_api_keys(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    keys = db.query(ApiKey).filter(ApiKey.user_id == user.id).order_by(ApiKey.created_at.desc()).all()
+    return [
+        {
+            "id": k.id,
+            "name": k.name,
+            "key_prefix": k.key_prefix,
+            "created_at": k.created_at.isoformat()
+        }
+        for k in keys
+    ]
+
+
+@router.post("/api-keys")
+def create_api_key(
+    req: CreateApiKeyRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    raw_token = f"iop_live_{secrets.token_urlsafe(24)}"
+    prefix = raw_token[:12] + "..." + raw_token[-4:]
+    key_rec = ApiKey(
+        user_id=user.id,
+        name=req.name or "Ingestion API Token",
+        key_prefix=prefix,
+        token=raw_token
+    )
+    db.add(key_rec)
+    db.add(ActivityLog(
+        user_id=user.id,
+        action="api_key_create",
+        resource_type="api_key",
+        resource_id=key_rec.id,
+        description=f"Generated new ingestion API token '{key_rec.name}'."
+    ))
+    db.commit()
+    return {
+        "id": key_rec.id,
+        "name": key_rec.name,
+        "key_prefix": key_rec.key_prefix,
+        "token": raw_token,
+        "created_at": key_rec.created_at.isoformat()
+    }
+
+
+@router.delete("/api-keys/{key_id}")
+def delete_api_key(
+    key_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    key_rec = db.query(ApiKey).filter(ApiKey.id == key_id, ApiKey.user_id == user.id).first()
+    if not key_rec:
+        raise HTTPException(status_code=404, detail="API key not found")
+
+    db.delete(key_rec)
+    db.add(ActivityLog(
+        user_id=user.id,
+        action="api_key_delete",
+        resource_type="api_key",
+        resource_id=key_id,
+        description=f"Revoked ingestion API token '{key_rec.name}'."
+    ))
+    db.commit()
+    return {"message": "API key successfully revoked"}
+
+
+@router.get("/notification-settings")
+def get_notification_settings(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    setting = db.query(NotificationSetting).filter(NotificationSetting.user_id == user.id).first()
+    if not setting:
+        return {
+            "slack_webhook_url": "",
+            "email_enabled": True,
+            "frequency": "instant"
+        }
+    return {
+        "slack_webhook_url": setting.slack_webhook_url or "",
+        "email_enabled": setting.email_enabled,
+        "frequency": setting.frequency
+    }
+
+
+@router.put("/notification-settings")
+def update_notification_settings(
+    req: NotificationSettingsRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    setting = db.query(NotificationSetting).filter(NotificationSetting.user_id == user.id).first()
+    if not setting:
+        setting = NotificationSetting(
+            user_id=user.id,
+            slack_webhook_url=req.slack_webhook_url,
+            email_enabled=req.email_enabled if req.email_enabled is not None else True,
+            frequency=req.frequency or "instant"
+        )
+        db.add(setting)
+    else:
+        if req.slack_webhook_url is not None:
+            setting.slack_webhook_url = req.slack_webhook_url
+        if req.email_enabled is not None:
+            setting.email_enabled = req.email_enabled
+        if req.frequency is not None:
+            setting.frequency = req.frequency
+
+    db.add(ActivityLog(
+        user_id=user.id,
+        action="notification_settings_update",
+        resource_type="user",
+        resource_id=user.id,
+        description="Updated notification delivery settings."
+    ))
+    db.commit()
+    return {
+        "message": "Notification settings updated successfully",
+        "slack_webhook_url": setting.slack_webhook_url or "",
+        "email_enabled": setting.email_enabled,
+        "frequency": setting.frequency
+    }
+
