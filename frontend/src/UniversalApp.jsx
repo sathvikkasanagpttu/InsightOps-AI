@@ -22,6 +22,9 @@ import ActivityLogView from "./components/saas/ActivityLogView";
 import ProfileSettingsView from "./components/saas/ProfileSettingsView";
 import DataHubView from "./components/saas/DataHubView";
 import DataCleaningStudio from "./components/saas/DataCleaningStudio";
+import AdvancedAnalyticsView from "./components/saas/AdvancedAnalyticsView";
+import DecisionSimulatorView from "./components/saas/DecisionSimulatorView";
+import DataLineageGovernanceModal from "./components/saas/DataLineageGovernanceModal";
 
 // Enterprise UI Components
 import AIAnalystDrawer from "./components/ui/AIAnalystDrawer";
@@ -54,6 +57,8 @@ const navGroups = [
     category: "INTELLIGENCE",
     items: [
       { id: "analyst", label: "AI Analyst", icon: BrainCircuit, badge: "AI" },
+      { id: "advanced_analytics", label: "Advanced Analytics", icon: Trophy, badge: "PRO" },
+      { id: "decision_simulator", label: "What-If Simulator", icon: Zap, badge: "NEW" },
       { id: "forecast", label: "Forecasts", icon: TrendingUp },
       { id: "anomalies", label: "Anomalies", icon: AlertTriangle },
       { id: "explore", label: "Explore EDA", icon: Search },
@@ -272,6 +277,15 @@ export default function UniversalApp({ onSignOut }) {
   const [answer, setAnswer] = useState(null);
   const [asking, setAsking] = useState(false);
   const [askError, setAskError] = useState("");
+
+  // Conversational Multi-Turn Analyst Threads
+  const [conversations, setConversations] = useState([]);
+  const [activeThreadId, setActiveThreadId] = useState(null);
+  const [activeThread, setActiveThread] = useState(null);
+  const [threadLoading, setThreadLoading] = useState(false);
+  const [threadInput, setThreadInput] = useState("");
+  const [threadSending, setThreadSending] = useState(false);
+  const [governanceModalOpen, setGovernanceModalOpen] = useState(false);
 
   // Governed SQL Studio state
   const [sqlQueryInput, setSqlQueryInput] = useState(
@@ -533,6 +547,92 @@ export default function UniversalApp({ onSignOut }) {
     }
   }
 
+  async function loadConversations() {
+    try {
+      const res = await api("/api/analyst/conversations?workspace_id=default-workspace");
+      setConversations(res || []);
+      if (res && res.length > 0 && !activeThreadId) {
+        loadThreadDetails(res[0].id);
+      }
+    } catch (e) {
+      console.warn("Failed to load analyst conversations:", e);
+    }
+  }
+
+  async function loadThreadDetails(id) {
+    setActiveThreadId(id);
+    setThreadLoading(true);
+    try {
+      const res = await api(`/api/analyst/conversations/${id}`);
+      setActiveThread(res);
+    } catch (e) {
+      addToast("Failed to load thread history.", "error");
+    } finally {
+      setThreadLoading(false);
+    }
+  }
+
+  async function createNewThread() {
+    try {
+      const res = await api("/api/analyst/conversations?workspace_id=default-workspace", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: `Analysis Thread ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+          dataset_id: datasetId
+        })
+      });
+      setConversations(prev => [res, ...prev]);
+      loadThreadDetails(res.id);
+      addToast("Started new conversational analysis thread.");
+    } catch (e) {
+      addToast("Failed to create thread.", "error");
+    }
+  }
+
+  async function sendThreadMessage(promptToSend) {
+    const text = (promptToSend || threadInput).trim();
+    if (!text || threadSending || !activeThreadId) return;
+    setThreadSending(true);
+    setThreadInput("");
+    try {
+      await api(`/api/analyst/conversations/${activeThreadId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: text,
+          dataset_id: datasetId
+        })
+      });
+      loadThreadDetails(activeThreadId);
+    } catch (e) {
+      addToast(e.message || "Failed to send message.", "error");
+    } finally {
+      setThreadSending(false);
+    }
+  }
+
+  async function deleteThread(id, e) {
+    e?.stopPropagation();
+    try {
+      await api(`/api/analyst/conversations/${id}`, { method: "DELETE" });
+      setConversations(prev => prev.filter(c => c.id !== id));
+      if (activeThreadId === id) {
+        setActiveThreadId(null);
+        setActiveThread(null);
+      }
+      addToast("Thread deleted.");
+    } catch (e) {
+      addToast("Failed to delete thread.", "error");
+    }
+  }
+
+  useEffect(() => {
+    if (activeView === "analyst" && analystMode === "threads" && conversations.length === 0) {
+      loadConversations();
+    }
+  }, [activeView, analystMode]);
+
   async function runGovernedSql(queryToRun) {
     const q = (typeof queryToRun === "string" ? queryToRun : sqlQueryInput).trim();
     if (!q || sqlRunning) return;
@@ -600,6 +700,8 @@ export default function UniversalApp({ onSignOut }) {
     data: ["DATA INGESTION STUDIO", "Data Studio", profile?.filename || "Inspect schema, quality and cleaning pipeline."],
     reports: ["REPORT BUILDER & LIBRARY", "Saved Reports", "Scheduled delivery, public sharing, and multi-page BI dashboards."],
     analyst: ["VERIFIED AI ANALYST", "Ask Your Dataset", "Calculated analytics with 100% traceable source evidence."],
+    advanced_analytics: ["GROWTH & UNIT ECONOMICS", "Advanced Analytics", "RFM customer segmentation, cohort retention matrix, predictive CLV, and CAC/LTV efficiency."],
+    decision_simulator: ["WHAT-IF DECISION ENGINE", "Decision Simulator", "Econometric price elasticity sweeps, marketing acquisition models, and variance attribution."],
     explore: ["EXPLORATORY DATA ANALYSIS", "EDA Workspace", "Distributions, correlations, relationships and time trends."],
     forecast: ["PREDICTIVE ENGINE", forecast?.metric === "revenue" ? "Revenue Forecast" : "Volume Forecast", "Confidence intervals and multi-period projection."],
     anomalies: ["STATISTICAL ANOMALY ENGINE", "Anomaly Detection", "Outliers detected via IQR, Z-Score and Isolation Forest."],
@@ -778,6 +880,18 @@ export default function UniversalApp({ onSignOut }) {
             >
               <AIOrb size={20} state={asking ? "thinking" : "idle"} />
               <span>AI Analyst</span>
+            </button>
+
+            {/* Data Lineage & Privacy Governance Trigger */}
+            <button
+              type="button"
+              className="btn-secondary lineage-gov-trigger"
+              onClick={() => setGovernanceModalOpen(true)}
+              title="Inspect End-to-End Data Lineage DAG & Privacy Scan"
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 11px", borderRadius: 8, fontSize: 12, background: "rgba(16, 185, 129, 0.08)", border: "1px solid rgba(16, 185, 129, 0.25)", color: "#34d399", cursor: "pointer" }}
+            >
+              <Shield size={14} />
+              <span>Lineage & PII</span>
             </button>
 
             {/* Workspace Selector Dropdown */}
@@ -1388,10 +1502,18 @@ export default function UniversalApp({ onSignOut }) {
             <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
               <div>
                 <span>LOCAL & TRUSTWORTHY INTELLIGENCE</span>
-                <h2>{analystMode === "nlq" ? "Natural Language Analyst" : "Governed SQL Studio"}</h2>
+                <h2>
+                  {analystMode === "nlq"
+                    ? "Natural Language Analyst"
+                    : analystMode === "threads"
+                    ? "Conversational AI Analyst Workspace"
+                    : "Governed SQL Studio"}
+                </h2>
                 <p className="muted">
                   {analystMode === "nlq"
                     ? "Ask business questions in plain English. Deterministic calculations are verified and cited directly on your dataset."
+                    : analystMode === "threads"
+                    ? "Multi-turn context-aware conversational threads with citations, confidence scoring, and interactive follow-ups."
                     : "Execute safe, sanitized, read-only SQL queries directly against your in-memory dataset table."}
                 </p>
               </div>
@@ -1403,7 +1525,17 @@ export default function UniversalApp({ onSignOut }) {
                   className={`analyst-mode-btn ${analystMode === "nlq" ? "active" : ""}`}
                   onClick={() => setAnalystMode("nlq")}
                 >
-                  <BrainCircuit size={15} /> Natural Language (NLQ)
+                  <BrainCircuit size={15} /> Single Query (NLQ)
+                </button>
+                <button
+                  type="button"
+                  className={`analyst-mode-btn ${analystMode === "threads" ? "active" : ""}`}
+                  onClick={() => {
+                    setAnalystMode("threads");
+                    if (conversations.length === 0) loadConversations();
+                  }}
+                >
+                  <Sparkles size={15} /> Conversational Threads
                 </button>
                 <button
                   type="button"
@@ -1473,6 +1605,165 @@ export default function UniversalApp({ onSignOut }) {
                   </button>
                 </form>
               </>
+            ) : analystMode === "threads" ? (
+              <div style={{ display: "grid", gridTemplateColumns: "260px 1fr", gap: 20, minHeight: 520, marginTop: 16 }}>
+                {/* Threads Sidebar */}
+                <div className="panel glass" style={{ padding: 14, display: "flex", flexDirection: "column" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "#8291a8", textTransform: "uppercase" }}>Saved Threads</span>
+                    <button type="button" className="btn-secondary" onClick={createNewThread} style={{ padding: "4px 8px", fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
+                      <Plus size={12} /> New
+                    </button>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, overflowY: "auto", flex: 1 }}>
+                    {conversations.map(c => (
+                      <div
+                        key={c.id}
+                        onClick={() => loadThreadDetails(c.id)}
+                        style={{
+                          padding: "10px 12px",
+                          borderRadius: 8,
+                          cursor: "pointer",
+                          background: activeThreadId === c.id ? "rgba(230, 195, 72, 0.15)" : "rgba(255,255,255,0.02)",
+                          border: `1px solid ${activeThreadId === c.id ? "#e6c348" : "rgba(255,255,255,0.05)"}`,
+                          transition: "all 0.15s ease"
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                          <strong style={{ fontSize: 12.5, color: activeThreadId === c.id ? "#f0cf55" : "#cbd5e1", lineHeight: 1.3 }}>
+                            {c.title}
+                          </strong>
+                          <button
+                            type="button"
+                            className="icon-action"
+                            onClick={(e) => deleteThread(c.id, e)}
+                            style={{ color: "#64748b", padding: 2 }}
+                            title="Delete thread"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                        <span style={{ fontSize: 10.5, color: "#64748b", display: "block", marginTop: 4 }}>
+                          {c.message_count} messages
+                        </span>
+                      </div>
+                    ))}
+                    {conversations.length === 0 && (
+                      <p style={{ fontSize: 11.5, color: "#64748b", textAlign: "center", margin: "20px 0" }}>No saved threads.</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Active Thread Message Stream */}
+                <div className="panel glass" style={{ padding: 18, display: "flex", flexDirection: "column" }}>
+                  <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 14, marginBottom: 14, maxHeight: 420 }}>
+                    {threadLoading ? (
+                      <div style={{ padding: "40px", textAlign: "center", color: "#8291a8" }}>
+                        <RefreshCw className="spin" size={20} style={{ margin: "0 auto 8px auto", color: "#e6c348" }} />
+                        <p style={{ fontSize: 12 }}>Loading conversation thread...</p>
+                      </div>
+                    ) : activeThread?.messages?.length > 0 ? (
+                      activeThread.messages.map((m, mIdx) => (
+                        <div
+                          key={m.id || mIdx}
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: m.role === "user" ? "flex-end" : "flex-start"
+                          }}
+                        >
+                          <div
+                            style={{
+                              maxWidth: "85%",
+                              padding: "12px 16px",
+                              borderRadius: 10,
+                              background: m.role === "user" ? "linear-gradient(135deg, #1e3a8a, #2563eb)" : "rgba(15, 23, 42, 0.75)",
+                              border: m.role === "user" ? "1px solid rgba(59, 130, 246, 0.4)" : "1px solid rgba(255, 255, 255, 0.08)",
+                              color: "#f8fafc",
+                              fontSize: 13,
+                              lineHeight: 1.5
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, fontSize: 11, color: m.role === "user" ? "#93c5fd" : "#e6c348", fontWeight: 700 }}>
+                              {m.role === "user" ? <User size={13} /> : <BrainCircuit size={13} />}
+                              <span>{m.role === "user" ? "You (Analyst)" : "Governed AI Assistant"}</span>
+                              {m.confidence_score && (
+                                <span style={{ marginLeft: "auto", fontSize: 10, color: "#34d399", fontWeight: 600 }}>
+                                  ✓ {Math.round(m.confidence_score * 100)}% Confidence
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ whiteSpace: "pre-wrap" }}>{m.content}</div>
+
+                            {/* Safe SQL Drawer / Badge */}
+                            {m.sql_query && (
+                              <details style={{ marginTop: 8, fontSize: 11, background: "rgba(0,0,0,0.25)", padding: "6px 10px", borderRadius: 6 }}>
+                                <summary style={{ cursor: "pointer", color: "#e6c348", fontWeight: 600 }}>
+                                  View Verified Executed SQL
+                                </summary>
+                                <pre style={{ margin: "6px 0 0 0", fontFamily: "var(--io-font-mono)", color: "#a5f3fc", fontSize: 10.5, overflowX: "auto" }}>
+                                  {m.sql_query}
+                                </pre>
+                              </details>
+                            )}
+
+                            {/* Contextual Follow-up Chips */}
+                            {m.follow_ups?.length > 0 && m.role === "assistant" && (
+                              <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                {m.follow_ups.map((chip, cIdx) => (
+                                  <button
+                                    key={cIdx}
+                                    type="button"
+                                    onClick={() => sendThreadMessage(chip)}
+                                    disabled={threadSending}
+                                    style={{
+                                      padding: "4px 8px",
+                                      borderRadius: 4,
+                                      background: "rgba(230, 195, 72, 0.12)",
+                                      border: "1px solid rgba(230, 195, 72, 0.3)",
+                                      color: "#f0cf55",
+                                      fontSize: 10.5,
+                                      cursor: "pointer",
+                                      textAlign: "left"
+                                    }}
+                                  >
+                                    ↳ {chip}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="muted" style={{ textAlign: "center", margin: "40px 0" }}>Start by asking a question below.</p>
+                    )}
+                  </div>
+
+                  {/* Thread Message Form */}
+                  <form
+                    onSubmit={(e) => { e.preventDefault(); sendThreadMessage(); }}
+                    style={{ display: "flex", gap: 8 }}
+                  >
+                    <input
+                      type="text"
+                      placeholder="Ask a context-aware follow-up question..."
+                      value={threadInput}
+                      onChange={e => setThreadInput(e.target.value)}
+                      disabled={threadSending || !activeThreadId}
+                      style={{ flex: 1, padding: "10px 14px", borderRadius: 8, background: "#0c1827", border: "1px solid rgba(255,255,255,0.15)", color: "#f8fafc" }}
+                    />
+                    <button
+                      type="submit"
+                      className="btn-primary"
+                      disabled={threadSending || !threadInput.trim() || !activeThreadId}
+                      style={{ padding: "0 16px" }}
+                    >
+                      {threadSending ? <RefreshCw className="spin" size={16} /> : <Send size={16} />}
+                    </button>
+                  </form>
+                </div>
+              </div>
             ) : (
               <div className="governed-sql-studio">
                 {/* Governance Sandbox Banner */}
@@ -2079,6 +2370,16 @@ export default function UniversalApp({ onSignOut }) {
           </section>
         )}
 
+        {/* ADVANCED ANALYTICS VIEW */}
+        {activeView === "advanced_analytics" && (
+          <AdvancedAnalyticsView datasetId={datasetId} addToast={addToast} />
+        )}
+
+        {/* WHAT-IF DECISION SIMULATOR VIEW */}
+        {activeView === "decision_simulator" && (
+          <DecisionSimulatorView datasetId={datasetId} addToast={addToast} />
+        )}
+
         {/* 7. ALERTS CENTER VIEW */}
         {activeView === "alerts" && (
           <AlertsCenterView datasetId={datasetId} addToast={addToast} />
@@ -2364,6 +2665,14 @@ export default function UniversalApp({ onSignOut }) {
             </section>
           </div>
         )}
+
+        {/* DATA LINEAGE & PRIVACY GOVERNANCE MODAL */}
+        <DataLineageGovernanceModal
+          isOpen={governanceModalOpen}
+          onClose={() => setGovernanceModalOpen(false)}
+          datasetId={datasetId}
+          addToast={addToast}
+        />
 
         </main>
 

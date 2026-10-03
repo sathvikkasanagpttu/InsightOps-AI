@@ -13,8 +13,11 @@ from .api import (
     visualization_router,
 )
 from .api.activity_saas import router as activity_router
+from .api.advanced_analytics import router as advanced_analytics_router
 from .api.alerts_saas import router as alerts_router
+from .api.analyst_conversations import router as analyst_conversations_router
 from .api.auth import router as auth_router
+from .api.decision_simulator import router as decision_simulator_router
 from .api.search_saas import router as search_router
 from .api.system_saas import router as system_router
 from .api.workspaces import router as workspaces_router
@@ -83,6 +86,9 @@ app.include_router(alerts_router)
 app.include_router(activity_router)
 app.include_router(search_router)
 app.include_router(system_router)
+app.include_router(advanced_analytics_router)
+app.include_router(decision_simulator_router)
+app.include_router(analyst_conversations_router)
 
 
 @app.get("/api/health")

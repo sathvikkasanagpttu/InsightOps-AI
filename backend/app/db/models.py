@@ -300,3 +300,57 @@ class DashboardVersion(Base):
     created_at = Column(DateTime, default=utc_now, nullable=False, index=True)
 
 
+class WhatIfScenario(Base):
+    __tablename__ = "what_if_scenarios"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    workspace_id = Column(String(36), ForeignKey("workspaces.id"), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    dataset_id = Column(String(64), nullable=True, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    price_change_pct = Column(Float, default=0.0, nullable=False)
+    marketing_spend_pct = Column(Float, default=0.0, nullable=False)
+    churn_reduction_pct = Column(Float, default=0.0, nullable=False)
+    conversion_rate_pct = Column(Float, default=0.0, nullable=False)
+    elasticity_model = Column(String(50), default="moderate", nullable=False)
+    baseline_metrics_json = Column(Text, default="{}", nullable=False)
+    projected_metrics_json = Column(Text, default="{}", nullable=False)
+    variance_summary_json = Column(Text, default="{}", nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False, index=True)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+
+class AnalystConversation(Base):
+    __tablename__ = "analyst_conversations"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    workspace_id = Column(String(36), ForeignKey("workspaces.id"), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    dataset_id = Column(String(64), nullable=True, index=True)
+    title = Column(String(255), nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False, index=True)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+    messages = relationship("AnalystMessage", back_populates="conversation", cascade="all, delete-orphan", order_by="AnalystMessage.created_at")
+
+
+class AnalystMessage(Base):
+    __tablename__ = "analyst_messages"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    conversation_id = Column(String(36), ForeignKey("analyst_conversations.id"), nullable=False, index=True)
+    role = Column(String(20), nullable=False)  # user, assistant
+    content = Column(Text, nullable=False)
+    sql_query = Column(Text, nullable=True)
+    evidence_json = Column(Text, default="{}", nullable=False)
+    confidence_score = Column(Float, nullable=True)
+    calculation_logic = Column(Text, nullable=True)
+    follow_ups_json = Column(Text, default="[]", nullable=False)
+    chart_recommendation_json = Column(Text, default="{}", nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False, index=True)
+
+    conversation = relationship("AnalystConversation", back_populates="messages")
+
+
+

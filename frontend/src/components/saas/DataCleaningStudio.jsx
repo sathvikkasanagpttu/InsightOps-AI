@@ -25,7 +25,8 @@ import {
   Save,
   Layers,
   ListOrdered,
-  X
+  X,
+  Shield
 } from "lucide-react";
 import { api } from "../../lib/api";
 
@@ -43,6 +44,10 @@ export default function DataCleaningStudio({
   const [historyLoading, setHistoryLoading] = useState(false);
   const [deepQuality, setDeepQuality] = useState(null);
   const [deepQualityLoading, setDeepQualityLoading] = useState(false);
+  const [lineageData, setLineageData] = useState(null);
+  const [lineageLoading, setLineageLoading] = useState(false);
+  const [piiData, setPiiData] = useState(null);
+  const [piiLoading, setPiiLoading] = useState(false);
 
   // Fetch deep quality and drift analysis
   useEffect(() => {
@@ -59,6 +64,29 @@ export default function DataCleaningStudio({
     }
     loadDeepQuality();
   }, [datasetId]);
+
+  useEffect(() => {
+    if (activeTool === "lineage_governance" && !lineageData) {
+      async function loadGovernance() {
+        setLineageLoading(true);
+        setPiiLoading(true);
+        try {
+          const [linRes, piiRes] = await Promise.all([
+            api(`/api/datasets/${encodeURIComponent(datasetId)}/lineage`),
+            api(`/api/datasets/${encodeURIComponent(datasetId)}/sensitive-data`)
+          ]);
+          setLineageData(linRes);
+          setPiiData(piiRes);
+        } catch (err) {
+          console.warn("Governance error:", err);
+        } finally {
+          setLineageLoading(false);
+          setPiiLoading(false);
+        }
+      }
+      loadGovernance();
+    }
+  }, [activeTool, datasetId, lineageData]);
 
   // Form states for each interactive tool
   // 1. Rename Column
@@ -338,6 +366,7 @@ export default function DataCleaningStudio({
           </div>
           {[
             { id: "deep_quality", label: "Quality & Drift Radar", icon: ShieldCheck, badge: "RADAR" },
+            { id: "lineage_governance", label: "Lineage & Governance", icon: Shield, badge: "DAG" },
             { id: "pipeline", label: "Transformation Pipeline", icon: Layers, badge: "RECIPE" },
             { id: "quick_fixes", label: "Suggested Fixes", icon: Sparkles, badge: "AI" },
             { id: "rename", label: "Rename Column", icon: Edit2 },
@@ -526,6 +555,80 @@ export default function DataCleaningStudio({
                 </div>
               ) : (
                 <p style={{ color: "#94a3b8" }}>No deep quality analysis available.</p>
+              )}
+            </div>
+          )}
+
+          {/* Lineage & Governance DAG and PII Scanner */}
+          {activeTool === "lineage_governance" && (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Shield size={20} color="#34d399" />
+                  <h3 style={{ fontSize: "16px", color: "#f8fafc", margin: 0 }}>Dataset Provenance & Lineage DAG</h3>
+                </div>
+                <span className="saas-badge admin">
+                  Compliance Score: {piiData?.compliance_score || 100}%
+                </span>
+              </div>
+
+              {lineageLoading ? (
+                <div style={{ padding: "40px", textAlign: "center", color: "#94a3b8" }}>
+                  <RefreshCw size={24} className="spin-fast" style={{ margin: "0 auto 12px auto" }} />
+                  <p>Resolving upstream pipeline nodes and compliance scanning...</p>
+                </div>
+              ) : (
+                <div>
+                  {/* Lineage Nodes */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
+                    {(lineageData?.nodes || []).map((node) => (
+                      <div
+                        key={node.id}
+                        style={{
+                          padding: "10px 14px",
+                          borderRadius: 8,
+                          background: "rgba(255,255,255,0.03)",
+                          borderLeft: `4px solid ${node.color || "#3b82f6"}`,
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center"
+                        }}
+                      >
+                        <div>
+                          <strong style={{ fontSize: 13, color: "#f8fafc", display: "block" }}>{node.title}</strong>
+                          <span style={{ fontSize: 11.5, color: "#94a3b8" }}>{node.description}</span>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <span style={{ fontSize: 11, fontFamily: "var(--io-font-mono)", color: "#e6c348" }}>{node.metrics}</span>
+                          <span style={{ fontSize: 10, color: "#34d399", display: "block" }}>{node.status}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Sensitive Column Scan Summary */}
+                  {piiData && (
+                    <div style={{ padding: "14px", background: "rgba(255,255,255,0.02)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.06)" }}>
+                      <h4 style={{ margin: "0 0 8px 0", fontSize: 13, color: "#cbd5e1" }}>
+                        Sensitive PII & PCI Scanner Findings ({piiData.sensitive_columns_count} Flagged)
+                      </h4>
+                      {piiData.findings?.length > 0 ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          {piiData.findings.map(f => (
+                            <div key={f.column_name} style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: "#cbd5e1", padding: "4px 0" }}>
+                              <span>Column <strong>{f.column_name}</strong> ({f.detected_type})</span>
+                              <span style={{ color: "#34d399" }}>{f.recommended_action}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p style={{ margin: 0, fontSize: 12, color: "#34d399" }}>
+                          ✓ Zero unprotected high-risk PII or PCI data detected across {piiData.total_columns_scanned} columns.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )}

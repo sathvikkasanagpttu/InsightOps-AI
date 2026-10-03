@@ -394,3 +394,37 @@ def get_dataset_transformation_history(dataset_id: str):
     return store.get_transformation_history(dataset_id)
 
 
+@router.get("/api/datasets/{dataset_id}/lineage")
+def get_dataset_lineage(dataset_id: str):
+    """
+    Returns the end-to-end data lineage DAG for the dataset.
+    """
+    from ..services.data_governance import generate_dataset_lineage_graph
+    bundle = get_bundle(dataset_id)
+    store = get_store()
+    history = store.get_transformation_history(dataset_id)
+    meta = {
+        "created_at": bundle["report"].get("created_at"),
+        "updated_at": bundle["report"].get("updated_at"),
+        "delimiter": bundle["report"].get("delimiter"),
+        "transformation_history": history
+    }
+    return generate_dataset_lineage_graph(
+        dataset_id=dataset_id,
+        filename=bundle["filename"],
+        metadata=meta,
+        report=bundle["report"]
+    )
+
+
+@router.get("/api/datasets/{dataset_id}/sensitive-data")
+def get_dataset_sensitive_data(dataset_id: str):
+    """
+    Scans dataset columns for sensitive PII, PCI, and national identifiers with compliance scoring.
+    """
+    from ..services.data_governance import scan_sensitive_columns
+    bundle = get_bundle(dataset_id)
+    return scan_sensitive_columns(bundle["frame"])
+
+
+
