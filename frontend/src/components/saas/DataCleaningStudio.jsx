@@ -16,7 +16,9 @@ import {
   Zap,
   HelpCircle,
   Eye,
-  FileSpreadsheet
+  FileSpreadsheet,
+  ShieldCheck,
+  Activity
 } from "lucide-react";
 import { api } from "../../lib/api";
 
@@ -28,10 +30,28 @@ export default function DataCleaningStudio({
   onDatasetUpdated = null,
   addToast = null
 }) {
-  const [activeTool, setActiveTool] = useState("quick_fixes"); // "quick_fixes" | "rename" | "remove" | "filter" | "replace" | "missing" | "duplicates" | "convert" | "calculated"
+  const [activeTool, setActiveTool] = useState("deep_quality"); // "deep_quality" | "quick_fixes" | "rename" | "remove" | "filter" | "replace" | "missing" | "duplicates" | "convert" | "calculated"
   const [history, setHistory] = useState([]);
   const [applying, setApplying] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [deepQuality, setDeepQuality] = useState(null);
+  const [deepQualityLoading, setDeepQualityLoading] = useState(false);
+
+  // Fetch deep quality and drift analysis
+  useEffect(() => {
+    async function loadDeepQuality() {
+      setDeepQualityLoading(true);
+      try {
+        const res = await api(`/api/quality/deep-analysis?dataset_id=${encodeURIComponent(datasetId)}`);
+        setDeepQuality(res);
+      } catch (err) {
+        console.warn("Error fetching deep quality analysis:", err);
+      } finally {
+        setDeepQualityLoading(false);
+      }
+    }
+    loadDeepQuality();
+  }, [datasetId]);
 
   // Form states for each interactive tool
   // 1. Rename Column
@@ -200,6 +220,7 @@ export default function DataCleaningStudio({
             Preparation Tools
           </div>
           {[
+            { id: "deep_quality", label: "Quality & Drift Radar", icon: ShieldCheck, badge: "RADAR" },
             { id: "quick_fixes", label: "Suggested Fixes", icon: Sparkles, badge: "AI" },
             { id: "rename", label: "Rename Column", icon: Edit2 },
             { id: "remove", label: "Remove Column", icon: Trash2 },
@@ -259,6 +280,138 @@ export default function DataCleaningStudio({
 
         {/* Center: Selected Tool Interactive Form */}
         <div className="panel glass" style={{ padding: "20px", borderRadius: "12px", background: "rgba(15, 23, 42, 0.5)", minHeight: "360px" }}>
+          {/* 0. Deep Quality & Drift Radar */}
+          {activeTool === "deep_quality" && (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <ShieldCheck size={20} color="#10b981" />
+                  <h3 style={{ fontSize: "16px", color: "#f8fafc", margin: 0 }}>Deep Quality Scorecard & Drift Radar</h3>
+                </div>
+                {deepQuality && (
+                  <span className={`saas-badge ${deepQuality.quality_tier === "Excellent" ? "admin" : "viewer"}`}>
+                    Tier: {deepQuality.quality_tier} ({deepQuality.overall_score}%)
+                  </span>
+                )}
+              </div>
+
+              {deepQualityLoading ? (
+                <div style={{ padding: "40px", textAlign: "center", color: "#94a3b8" }}>
+                  <RefreshCw size={24} className="spin-fast" style={{ margin: "0 auto 12px auto" }} />
+                  <p>Computing statistical multi-dimensional quality index and drift telemetry...</p>
+                </div>
+              ) : deepQuality ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
+                  {/* 5-Dimension Radar Scorecard */}
+                  <div style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))",
+                    gap: "10px"
+                  }}>
+                    {Object.entries(deepQuality.dimensions || {}).map(([dim, score]) => (
+                      <div key={dim} className="panel glass" style={{ padding: "12px", borderRadius: "8px", textAlign: "center" }}>
+                        <span style={{ fontSize: "11px", color: "#94a3b8", textTransform: "uppercase", fontWeight: "600" }}>{dim}</span>
+                        <div style={{ fontSize: "20px", fontWeight: "700", color: score >= 90 ? "#10b981" : score >= 75 ? "#e6c348" : "#f43f5e", margin: "4px 0" }}>
+                          {score}%
+                        </div>
+                        <div style={{ height: "4px", width: "100%", background: "rgba(255,255,255,0.08)", borderRadius: "2px", overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${score}%`, background: score >= 90 ? "#10b981" : score >= 75 ? "#e6c348" : "#f43f5e" }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Feature Distribution Drift Section */}
+                  <div className="panel glass" style={{ padding: "16px", borderRadius: "10px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                      <strong style={{ fontSize: "13px", color: "#f8fafc" }}>Feature Distribution Drift Detection</strong>
+                      <span style={{ fontSize: "11px", color: deepQuality.drift_detected ? "#fbbf24" : "#10b981" }}>
+                        {deepQuality.drift_detected ? "Distribution Shifts Detected" : "Stable Across Segments"}
+                      </span>
+                    </div>
+
+                    {deepQuality.drift_detection && deepQuality.drift_detection.length > 0 ? (
+                      <div className="table-responsive-wrapper">
+                        <table className="saas-table modern-table" style={{ fontSize: "12px" }}>
+                          <thead>
+                            <tr>
+                              <th>Feature</th>
+                              <th>Baseline Mean</th>
+                              <th>Recent Mean</th>
+                              <th>Shift %</th>
+                              <th>Variance Ratio</th>
+                              <th>Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {deepQuality.drift_detection.map((d, i) => (
+                              <tr key={i}>
+                                <td><b>{d.column}</b></td>
+                                <td>{Number(d.baseline_mean).toLocaleString()}</td>
+                                <td>{Number(d.recent_mean).toLocaleString()}</td>
+                                <td>{d.mean_shift_pct}%</td>
+                                <td>{d.variance_ratio}x</td>
+                                <td>
+                                  <span className={`saas-badge ${d.status === "Stable" ? "viewer" : "admin"}`}>
+                                    {d.status}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p style={{ fontSize: "12px", color: "#94a3b8" }}>No significant drift detected across dataset feature distribution.</p>
+                    )}
+                  </div>
+
+                  {/* Actionable Quality Recommendations */}
+                  {deepQuality.recommendations && deepQuality.recommendations.length > 0 && (
+                    <div>
+                      <strong style={{ fontSize: "13px", color: "#f8fafc", display: "block", marginBottom: "8px" }}>
+                        Actionable Quality Remediation
+                      </strong>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                        {deepQuality.recommendations.map((rec, i) => (
+                          <div
+                            key={i}
+                            className="panel glass"
+                            style={{
+                              padding: "12px 14px",
+                              borderRadius: "8px",
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              borderLeft: "3px solid #e6c348"
+                            }}
+                          >
+                            <div>
+                              <span style={{ fontSize: "13px", color: "#f8fafc", fontWeight: "500", display: "block" }}>{rec.action}</span>
+                              <small style={{ color: "#34d399", fontSize: "11px" }}>{rec.impact}</small>
+                            </div>
+                            {rec.pipeline_operation !== "none" && (
+                              <button
+                                type="button"
+                                className="enterprise-btn secondary"
+                                style={{ fontSize: "11px", padding: "4px 10px" }}
+                                onClick={() => setActiveTool(rec.pipeline_operation === "remove_duplicates" ? "duplicates" : "missing")}
+                              >
+                                Fix in Tool →
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p style={{ color: "#94a3b8" }}>No deep quality analysis available.</p>
+              )}
+            </div>
+          )}
+
           {/* 1. Quick Fixes */}
           {activeTool === "quick_fixes" && (
             <div>

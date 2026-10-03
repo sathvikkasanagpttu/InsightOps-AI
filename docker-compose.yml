@@ -17,6 +17,20 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: insightops-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   api:
     build:
       context: .
@@ -30,6 +44,7 @@ services:
       - ./backend:/app/backend
     environment:
       - DATABASE_URL=postgresql://insightops:insightops_password@db:5432/insightops_db
+      - REDIS_URL=redis://redis:6379/0
       - JWT_SECRET_KEY=insightops-secret-key-change-in-production-2026-bi-saas-enterprise
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')\" || exit 1"]
@@ -38,6 +53,8 @@ services:
       retries: 5
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
   web:
@@ -56,3 +73,4 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:

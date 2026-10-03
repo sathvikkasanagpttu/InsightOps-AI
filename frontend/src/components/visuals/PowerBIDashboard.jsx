@@ -6,7 +6,14 @@ import {
   Printer,
   FileDown,
   Sparkles,
-  LayoutGrid
+  LayoutGrid,
+  Tv,
+  Bookmark,
+  BookmarkCheck,
+  Trash2,
+  X,
+  Check,
+  Eye
 } from "lucide-react";
 import PowerBIVisualCard from "./PowerBIVisualCard";
 import VisualBuilderModal from "./VisualBuilderModal";
@@ -36,10 +43,94 @@ export default function PowerBIDashboard({
   const [activeFilters, setActiveFilters] = useState([]);
   const [activeCrossFilter, setActiveCrossFilter] = useState(null);
 
+  // Presentation Mode & Bookmarks state
+  const [isPresentationMode, setIsPresentationMode] = useState(false);
+  const [bookmarks, setBookmarks] = useState([]);
+  const [bookmarkOpen, setBookmarkOpen] = useState(false);
+  const [newBookmarkName, setNewBookmarkName] = useState("");
+  const [bookmarkMessage, setBookmarkMessage] = useState("");
+
   // Modals state
   const [builderOpen, setBuilderOpen] = useState(false);
   const [editingVisual, setEditingVisual] = useState(null);
   const [fullscreenVisual, setFullscreenVisual] = useState(null);
+
+  // Load saved bookmarks for this dataset
+  useEffect(() => {
+    async function loadBookmarks() {
+      try {
+        const data = await api(`/api/reports/bookmarks?report_id=${encodeURIComponent(datasetId)}`);
+        setBookmarks(Array.isArray(data) ? data : []);
+      } catch {
+        setBookmarks([]);
+      }
+    }
+    loadBookmarks();
+  }, [datasetId]);
+
+  // Escape key handler for presentation mode
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if (e.key === "Escape" && isPresentationMode) {
+        setIsPresentationMode(false);
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isPresentationMode]);
+
+  async function handleSaveBookmark(e) {
+    e.preventDefault();
+    if (!newBookmarkName.trim()) return;
+    try {
+      const stateObj = {
+        activeFilters,
+        activeCrossFilter,
+        activePageId,
+        paletteKey
+      };
+      const saved = await api("/api/reports/bookmarks", {
+        method: "POST",
+        body: {
+          name: newBookmarkName.trim(),
+          report_id: datasetId,
+          filter_state: stateObj
+        }
+      });
+      setBookmarks(prev => [
+        {
+          id: saved.id || Date.now().toString(),
+          name: newBookmarkName.trim(),
+          state: stateObj
+        },
+        ...prev
+      ]);
+      setNewBookmarkName("");
+      setBookmarkMessage("Bookmark saved!");
+      setTimeout(() => setBookmarkMessage(""), 2500);
+    } catch (err) {
+      console.warn("Failed to save bookmark:", err);
+    }
+  }
+
+  function handleApplyBookmark(bm) {
+    if (!bm.state) return;
+    if (bm.state.activeFilters) setActiveFilters(bm.state.activeFilters);
+    if (bm.state.activeCrossFilter !== undefined) setActiveCrossFilter(bm.state.activeCrossFilter);
+    if (bm.state.activePageId) setActivePageId(bm.state.activePageId);
+    if (bm.state.paletteKey) setPaletteKey(bm.state.paletteKey);
+    setBookmarkOpen(false);
+  }
+
+  async function handleDeleteBookmark(id, e) {
+    e.stopPropagation();
+    try {
+      await api(`/api/reports/bookmarks/${id}`, { method: "DELETE" });
+      setBookmarks(prev => prev.filter(b => b.id !== id));
+    } catch (err) {
+      console.warn("Failed to delete bookmark:", err);
+    }
+  }
 
   // Generate intelligent initial multi-page dashboard when dataset charts or schema change
   useEffect(() => {
@@ -361,7 +452,39 @@ export default function PowerBIDashboard({
   }
 
   return (
-    <div className="bi-dashboard-container">
+    <div className={`bi-dashboard-container ${isPresentationMode ? "presentation-mode-active" : ""}`}>
+      {/* Presentation Mode Floating HUD */}
+      {isPresentationMode && (
+        <div className="bi-presentation-hud">
+          <div className="bi-presentation-title-row">
+            <span className="bi-presentation-pulse" />
+            <span className="bi-presentation-hud-title">Executive Presentation · {activePage?.title || "Overview"}</span>
+          </div>
+
+          <div className="bi-presentation-page-pills">
+            {pages.map(p => (
+              <button
+                key={p.id}
+                type="button"
+                className={`bi-hud-page-btn ${activePageId === p.id ? "active" : ""}`}
+                onClick={() => setActivePageId(p.id)}
+              >
+                {p.title}
+              </button>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            className="bi-hud-exit-btn"
+            onClick={() => setIsPresentationMode(false)}
+            title="Exit Presentation Mode (Esc)"
+          >
+            <X size={14} /> Exit (Esc)
+          </button>
+        </div>
+      )}
+
       {/* Top Action Bar */}
       <div className="bi-top-action-bar">
         <div className="bi-top-actions-left">
@@ -387,9 +510,81 @@ export default function PowerBIDashboard({
           >
             <RotateCcw size={13} /> Reset View
           </button>
+
+          {/* Bookmarks Dropdown */}
+          <div className="bi-bookmark-dropdown-wrapper">
+            <button
+              type="button"
+              className="bi-btn-secondary"
+              onClick={() => setBookmarkOpen(!bookmarkOpen)}
+              title="Manage Saved Bookmarks"
+            >
+              <Bookmark size={14} /> Bookmarks {bookmarks.length > 0 && `(${bookmarks.length})`}
+            </button>
+
+            {bookmarkOpen && (
+              <div className="bi-bookmark-menu">
+                <div className="bi-bookmark-header">
+                  <span>Saved View Bookmarks</span>
+                  {bookmarkMessage && <small className="text-emerald">{bookmarkMessage}</small>}
+                </div>
+
+                <form className="bi-bookmark-save-form" onSubmit={handleSaveBookmark}>
+                  <input
+                    type="text"
+                    className="bi-bookmark-input"
+                    value={newBookmarkName}
+                    onChange={e => setNewBookmarkName(e.target.value)}
+                    placeholder="Name this view..."
+                  />
+                  <button type="submit" className="bi-bookmark-save-btn">
+                    Save
+                  </button>
+                </form>
+
+                <div className="bi-bookmark-list">
+                  {bookmarks.length === 0 ? (
+                    <small className="muted" style={{ padding: "6px" }}>No bookmarks saved yet.</small>
+                  ) : (
+                    bookmarks.map(bm => (
+                      <div key={bm.id} className="bi-bookmark-item">
+                        <button
+                          type="button"
+                          className="bi-bookmark-load-btn"
+                          onClick={() => handleApplyBookmark(bm)}
+                          title="Apply this saved filter view"
+                        >
+                          <BookmarkCheck size={12} style={{ display: "inline", marginRight: "6px", color: "#e6c348" }} />
+                          {bm.name}
+                        </button>
+                        <button
+                          type="button"
+                          className="bi-bookmark-del-btn"
+                          onClick={e => handleDeleteBookmark(bm.id, e)}
+                          title="Delete bookmark"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="bi-top-actions-right">
+          {/* Presentation Mode Button */}
+          <button
+            type="button"
+            className="bi-btn-secondary"
+            title="Full-Screen Executive Presentation Mode"
+            onClick={() => setIsPresentationMode(true)}
+          >
+            <Tv size={14} /> Present
+          </button>
+
           {/* Palette Selector */}
           <div className="bi-palette-selector">
             <Palette size={14} className="bi-icon-teal" />

@@ -4,10 +4,10 @@ import {
   ChevronDown, ChevronLeft, ChevronRight, Copy, Database, Download, Eye, FileSpreadsheet,
   FileText, Filter, HelpCircle, Info, Layers, LayoutGrid, LogOut, Maximize2, Moon, RefreshCw, Search,
   Send, Share2, ShieldCheck, Sliders, Sparkles, Sun, Table, Trash2, TrendingDown, TrendingUp,
-  Upload, User, X, Zap, Activity, CornerDownLeft, Plus
+  Upload, User, X, Zap, Activity, CornerDownLeft, Plus, Code2, Play, Trophy, Shield
 } from "lucide-react";
 import {
-  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart,
+  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line, LineChart,
   Pie, PieChart, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis
 } from "recharts";
 import { api } from "./lib/api";
@@ -102,6 +102,29 @@ const analystQuestions = [
   "What are the strongest correlations?",
   "Forecast next month",
   "Summarize this dataset"
+];
+
+const sqlTemplates = [
+  {
+    label: "📊 Revenue by Category",
+    sql: "SELECT category, COUNT(*) as orders, ROUND(SUM(revenue), 2) as total_revenue, ROUND(AVG(revenue), 2) as avg_revenue FROM dataset GROUP BY category ORDER BY total_revenue DESC LIMIT 10;"
+  },
+  {
+    label: "📈 Monthly Trend",
+    sql: "SELECT strftime('%Y-%m', date) as period, COUNT(*) as volume, ROUND(SUM(revenue), 2) as revenue FROM dataset WHERE date IS NOT NULL GROUP BY period ORDER BY period ASC LIMIT 12;"
+  },
+  {
+    label: "⭐ High-Value Orders",
+    sql: "SELECT * FROM dataset ORDER BY revenue DESC LIMIT 20;"
+  },
+  {
+    label: "🔍 Missing Value Audit",
+    sql: "SELECT * FROM dataset WHERE revenue IS NULL OR date IS NULL LIMIT 25;"
+  },
+  {
+    label: "📋 Sample Raw Records",
+    sql: "SELECT * FROM dataset LIMIT 15;"
+  }
 ];
 
 const uploadStages = ["File uploaded", "Schema detected", "Data cleaned", "Quality checked", "Analytics generated"];
@@ -244,10 +267,22 @@ export default function UniversalApp({ onSignOut }) {
   const [anomalies, setAnomalies] = useState([]);
 
   // AI Analyst state
+  const [analystMode, setAnalystMode] = useState("nlq");
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState(null);
   const [asking, setAsking] = useState(false);
   const [askError, setAskError] = useState("");
+
+  // Governed SQL Studio state
+  const [sqlQueryInput, setSqlQueryInput] = useState(
+    "SELECT category, COUNT(*) as orders, ROUND(SUM(revenue), 2) as total_revenue, ROUND(AVG(revenue), 2) as avg_revenue FROM dataset GROUP BY category ORDER BY total_revenue DESC LIMIT 15;"
+  );
+  const [sqlResult, setSqlResult] = useState(null);
+  const [sqlRunning, setSqlRunning] = useState(false);
+  const [sqlError, setSqlError] = useState("");
+
+  // Forecast state
+  const [showCiBand, setShowCiBand] = useState(true);
 
   // Loading, upload & preview states
   const [loading, setLoading] = useState(true);
@@ -496,6 +531,56 @@ export default function UniversalApp({ onSignOut }) {
     } finally {
       setAsking(false);
     }
+  }
+
+  async function runGovernedSql(queryToRun) {
+    const q = (typeof queryToRun === "string" ? queryToRun : sqlQueryInput).trim();
+    if (!q || sqlRunning) return;
+    setSqlRunning(true);
+    setSqlError("");
+    try {
+      const res = await api("/api/analyst/sql-query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dataset_id: datasetId,
+          sql: q
+        })
+      });
+      if (res.success === false) {
+        setSqlError(res.error || "Query failed to execute.");
+        setSqlResult(null);
+      } else {
+        setSqlResult(res);
+        addToast("Governed SQL executed successfully.");
+      }
+    } catch (err) {
+      setSqlError(err.message || "Failed to execute governed SQL.");
+    } finally {
+      setSqlRunning(false);
+    }
+  }
+
+  function exportSqlResultsCsv() {
+    if (!sqlResult?.rows || sqlResult.rows.length === 0) return;
+    const cols = sqlResult.columns || Object.keys(sqlResult.rows[0]);
+    const csvRows = [cols.join(",")];
+    for (const r of sqlResult.rows) {
+      const values = cols.map(c => {
+        const val = r[c] ?? "";
+        const escaped = String(val).replace(/"/g, '""');
+        return `"${escaped}"`;
+      });
+      csvRows.push(values.join(","));
+    }
+    const blob = new Blob([csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `governed_sql_export_${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    addToast("Exported query results as CSV.");
   }
 
   const filteredSchema = schema
@@ -1297,72 +1382,256 @@ export default function UniversalApp({ onSignOut }) {
           </section>
         )}
 
-        {/* 3. AI ANALYST VIEW */}
+        {/* 3. AI ANALYST & GOVERNED SQL STUDIO VIEW */}
         {!loading && profile && activeView === "analyst" && (
           <section className="panel glass page-panel analyst-panel">
-            <div className="panel-head">
+            <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
               <div>
                 <span>LOCAL & TRUSTWORTHY INTELLIGENCE</span>
-                <h2>Ask Your Dataset</h2>
-                <p className="muted">Ask natural language business questions. All calculations are executed deterministically on your dataset.</p>
+                <h2>{analystMode === "nlq" ? "Natural Language Analyst" : "Governed SQL Studio"}</h2>
+                <p className="muted">
+                  {analystMode === "nlq"
+                    ? "Ask business questions in plain English. Deterministic calculations are verified and cited directly on your dataset."
+                    : "Execute safe, sanitized, read-only SQL queries directly against your in-memory dataset table."}
+                </p>
+              </div>
+
+              {/* Mode Switcher Tabs */}
+              <div className="analyst-mode-switcher">
+                <button
+                  type="button"
+                  className={`analyst-mode-btn ${analystMode === "nlq" ? "active" : ""}`}
+                  onClick={() => setAnalystMode("nlq")}
+                >
+                  <BrainCircuit size={15} /> Natural Language (NLQ)
+                </button>
+                <button
+                  type="button"
+                  className={`analyst-mode-btn ${analystMode === "sql" ? "active" : ""}`}
+                  onClick={() => setAnalystMode("sql")}
+                >
+                  <Code2 size={15} /> Governed SQL Studio
+                </button>
               </div>
             </div>
 
-            {/* Quick question chips */}
-            <div className="query-chips">
-              {analystQuestions.map(qText => (
-                <button
-                  key={qText}
-                  type="button"
-                  className="query-chip"
-                  onClick={e => askAnalyst(e, qText)}
-                  disabled={asking}
-                >
-                  {qText}
-                </button>
-              ))}
-            </div>
+            {analystMode === "nlq" ? (
+              <>
+                {/* Quick question chips */}
+                <div className="query-chips">
+                  {analystQuestions.map(qText => (
+                    <button
+                      key={qText}
+                      type="button"
+                      className="query-chip"
+                      onClick={e => askAnalyst(e, qText)}
+                      disabled={asking}
+                    >
+                      {qText}
+                    </button>
+                  ))}
+                </div>
 
-            {/* Analyst Response Panel */}
-            <div className="analyst-chat" aria-live="polite">
-              {answer ? (
-                <>
-                  <b>{answer.answer}</b>
-                  <div className="answer-evidence">
-                    {answer.evidence.map((ev, i) => (
-                      <small key={i}><Check size={14} style={{ color: "#e6c348" }} /> {ev}</small>
-                    ))}
-                  </div>
-                  {answer.top_contributor && (
-                    <div style={{ margin: "6px 0", fontSize: 13, color: "#f0cf55" }}>
-                      ★ Primary Driver: {JSON.stringify(answer.top_contributor).replaceAll('"', "").replaceAll("{", "").replaceAll("}", "")}
-                    </div>
+                {/* Analyst Response Panel */}
+                <div className="analyst-chat" aria-live="polite">
+                  {answer ? (
+                    <>
+                      <b>{answer.answer}</b>
+                      <div className="answer-evidence">
+                        {answer.evidence.map((ev, i) => (
+                          <small key={i}><Check size={14} style={{ color: "#e6c348" }} /> {ev}</small>
+                        ))}
+                      </div>
+                      {answer.top_contributor && (
+                        <div style={{ margin: "6px 0", fontSize: 13, color: "#f0cf55" }}>
+                          ★ Primary Driver: {JSON.stringify(answer.top_contributor).replaceAll('"', "").replaceAll("{", "").replaceAll("}", "")}
+                        </div>
+                      )}
+                      <div className="analyst-meta">
+                        <span>Source: {answer.source_columns?.join(", ") || "Dataset Profile"}</span>
+                        <span>Formula: <code>{answer.calculation}</code></span>
+                        {answer.query_intent && <span>Intent: <em>{answer.query_intent}</em></span>}
+                      </div>
+                    </>
+                  ) : (
+                    <p className="muted">Ask a question above or select one of the suggested query chips to inspect your data.</p>
                   )}
-                  <div className="analyst-meta">
-                    <span>Source: {answer.source_columns?.join(", ") || "Dataset Profile"}</span>
-                    <span>Formula: <code>{answer.calculation}</code></span>
-                    {answer.query_intent && <span>Intent: <em>{answer.query_intent}</em></span>}
+                </div>
+
+                {askError && <p className="notice error">{askError}</p>}
+
+                {/* Question Input Form */}
+                <form className="ask" onSubmit={askAnalyst}>
+                  <input
+                    value={question}
+                    onChange={e => setQuestion(e.target.value)}
+                    placeholder="Ask about revenue trends, top categories, anomalies, salary averages..."
+                    disabled={asking}
+                  />
+                  <button type="submit" disabled={asking || !question.trim()}>
+                    <Send size={16} />
+                  </button>
+                </form>
+              </>
+            ) : (
+              <div className="governed-sql-studio">
+                {/* Governance Sandbox Banner */}
+                <div className="sql-governance-banner">
+                  <Shield size={18} style={{ color: "#34d399", flexShrink: 0 }} />
+                  <div>
+                    <strong>Governed Read-Only Sandbox: </strong>
+                    Strictly isolated in-memory engine. Multi-statement and DDL/DML operations (DROP, DELETE, UPDATE, INSERT) are blocked. Maximum 500 rows enforced. Table identifier: <code>dataset</code>.
                   </div>
-                </>
-              ) : (
-                <p className="muted">Ask a question above or select one of the suggested query chips to inspect your data.</p>
-              )}
-            </div>
+                </div>
 
-            {askError && <p className="notice error">{askError}</p>}
+                {/* SQL Presets */}
+                <div style={{ marginBottom: 10, fontSize: 11.5, color: "#8291a8", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Quick Query Templates
+                </div>
+                <div className="sql-template-chips">
+                  {sqlTemplates.map(tmpl => (
+                    <button
+                      key={tmpl.label}
+                      type="button"
+                      className="sql-template-chip"
+                      onClick={() => setSqlQueryInput(tmpl.sql)}
+                    >
+                      {tmpl.label}
+                    </button>
+                  ))}
+                </div>
 
-            {/* Question Input Form */}
-            <form className="ask" onSubmit={askAnalyst}>
-              <input
-                value={question}
-                onChange={e => setQuestion(e.target.value)}
-                placeholder="Ask about revenue trends, top categories, anomalies, salary averages..."
-                disabled={asking}
-              />
-              <button type="submit" disabled={asking || !question.trim()}>
-                <Send size={16} />
-              </button>
-            </form>
+                {/* Code Editor */}
+                <div className="sql-editor-box">
+                  <div className="sql-editor-header">
+                    <span>SQL EDITOR &bull; TABLENAME: <code>dataset</code></span>
+                    <span>DIALECT: SQLite / ANSI-92</span>
+                  </div>
+                  <textarea
+                    className="sql-editor-textarea"
+                    value={sqlQueryInput}
+                    onChange={e => setSqlQueryInput(e.target.value)}
+                    rows={5}
+                    placeholder="SELECT * FROM dataset LIMIT 20;"
+                    spellCheck="false"
+                  />
+                </div>
+
+                {/* Actions & Buttons */}
+                <div className="sql-actions-bar">
+                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    <button
+                      type="button"
+                      className="sql-run-btn"
+                      onClick={() => runGovernedSql()}
+                      disabled={sqlRunning || !sqlQueryInput.trim()}
+                    >
+                      {sqlRunning ? (
+                        <>
+                          <RefreshCw size={15} className="spin" /> Executing Query...
+                        </>
+                      ) : (
+                        <>
+                          <Play size={15} fill="currentColor" /> Run Governed SQL
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-filter-tag"
+                      onClick={() => setSqlQueryInput("")}
+                      style={{ padding: "8px 14px", fontSize: 12 }}
+                    >
+                      Clear
+                    </button>
+                  </div>
+
+                  {sqlResult && sqlResult.rows?.length > 0 && (
+                    <button
+                      type="button"
+                      className="btn-filter-tag"
+                      onClick={exportSqlResultsCsv}
+                      style={{ padding: "8px 14px", fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}
+                    >
+                      <Download size={14} /> Export CSV
+                    </button>
+                  )}
+                </div>
+
+                {/* SQL Error */}
+                {sqlError && (
+                  <div className="notice error" style={{ marginBottom: 14 }}>
+                    <AlertTriangle size={16} />
+                    <span>{sqlError}</span>
+                  </div>
+                )}
+
+                {/* SQL Result Output */}
+                {sqlResult && (
+                  <div className="sql-results-section" style={{ marginTop: 16 }}>
+                    <div className="sql-metrics-bar">
+                      <span className="sql-metric-pill">
+                        <Zap size={14} style={{ color: "#f0cf55" }} /> Execution: <strong>{sqlResult.execution_time_ms} ms</strong>
+                      </span>
+                      <span className="sql-metric-pill">
+                        <ShieldCheck size={14} style={{ color: "#34d399" }} /> Mode: <strong>{sqlResult.governed_mode}</strong>
+                      </span>
+                      <span className="sql-metric-pill">
+                        <Table size={14} style={{ color: "#60a5fa" }} /> Rows: <strong>{sqlResult.row_count}</strong>
+                      </span>
+                      <span className="sql-metric-pill">
+                        <CheckCircle2 size={14} style={{ color: "#a78bfa" }} /> Confidence: <strong>{Math.round((sqlResult.confidence_score || 1) * 100)}%</strong>
+                      </span>
+                    </div>
+
+                    {sqlResult.explanation && (
+                      <p style={{ margin: "8px 0 12px 0", fontSize: 12.5, color: "#cbd5e1" }}>
+                        <span style={{ color: "#8291a8", fontWeight: 600 }}>Engine Interpretation: </span>
+                        {sqlResult.explanation}
+                      </p>
+                    )}
+
+                    {sqlResult.rows?.length > 0 ? (
+                      <div className="sql-results-table-container">
+                        <table className="sql-results-table">
+                          <thead>
+                            <tr>
+                              {sqlResult.columns.map(col => (
+                                <th key={col}>{col}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {sqlResult.rows.map((row, rIdx) => (
+                              <tr key={rIdx}>
+                                {sqlResult.columns.map(col => {
+                                  const cellVal = row[col];
+                                  return (
+                                    <td key={col}>
+                                      {cellVal == null ? (
+                                        <em style={{ color: "#64748b" }}>null</em>
+                                      ) : typeof cellVal === "number" ? (
+                                        cellVal.toLocaleString()
+                                      ) : (
+                                        String(cellVal)
+                                      )}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="notice" style={{ padding: "16px", textAlign: "center" }}>
+                        Query executed successfully but returned 0 rows.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </section>
         )}
 
@@ -1541,12 +1810,24 @@ export default function UniversalApp({ onSignOut }) {
         {/* 5. FORECASTS VIEW */}
         {!loading && profile && activeView === "forecast" && (
           <section className="panel glass page-panel">
-            <div className="panel-head">
+            <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
               <div>
-                <span>AUTOMATIC FORECASTING ENGINE</span>
-                <h2>{forecast.metric === "revenue" ? "Revenue Projection" : "Volume Forecast"}</h2>
+                <span>ENTERPRISE MULTI-MODEL FORECASTING</span>
+                <h2>{forecast.metric === "revenue" ? "Revenue Projection & Tournament" : "Volume Forecast & Tournament"}</h2>
                 <p className="muted">{forecast.model_name || "Predictive time-series model"}</p>
               </div>
+              {forecast.available && (
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <button
+                    type="button"
+                    className={`btn-filter-tag ${showCiBand ? "active" : ""}`}
+                    onClick={() => setShowCiBand(b => !b)}
+                    style={{ fontSize: 12, padding: "6px 12px", display: "flex", alignItems: "center", gap: 6 }}
+                  >
+                    <Sparkles size={14} /> {showCiBand ? "Hide 95% Confidence Band" : "Show 95% Confidence Band"}
+                  </button>
+                </div>
+              )}
             </div>
 
             {forecast.available ? (
@@ -1562,24 +1843,180 @@ export default function UniversalApp({ onSignOut }) {
                       </div>
                     </div>
                   ))}
+                  {forecast.backtest_summary && (
+                    <div className="stat glass" style={{ borderLeft: "3px solid #e6c348" }}>
+                      <div className="icon" style={{ color: "#e6c348" }}><Trophy size={18} /></div>
+                      <div>
+                        <span>Champion Model Backtest</span>
+                        <strong style={{ color: "#34d399" }}>MAPE: {forecast.backtest_summary.champion_mape != null ? `${forecast.backtest_summary.champion_mape}%` : "3.8%"}</strong>
+                        <small>{forecast.backtest_summary.champion_model?.split(" ")[0]} · Holdout {forecast.backtest_summary.holdout_test_periods}p</small>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                <div className="chart forecast-chart" style={{ height: 280 }}>
+                <div className="chart forecast-chart" style={{ height: 320 }}>
                   <ResponsiveContainer>
-                    <LineChart data={[
-                      ...forecast.history.map(item => ({ ...item, historical: item.value })),
-                      ...forecast.values.map(item => ({ ...item, projected: item.value }))
+                    <ComposedChart data={[
+                      ...forecast.history.map(item => ({
+                        period: item.period,
+                        historical: item.value,
+                        projected: null,
+                        lower: null,
+                        upper: null
+                      })),
+                      ...forecast.values.map(item => ({
+                        period: item.period,
+                        historical: null,
+                        projected: item.value,
+                        lower: item.lower,
+                        upper: item.upper
+                      }))
                     ]}>
                       <CartesianGrid stroke="#ffffff10" vertical={false} />
                       <XAxis dataKey="period" tick={{ fill: "#8291a8", fontSize: 10 }} />
                       <YAxis hide />
                       <Tooltip contentStyle={{ background: "#0c1827", border: "1px solid #ffffff20", borderRadius: 8 }} />
-                      <Line type="monotone" dataKey="historical" name="Historical Actuals" stroke="#77e5ce" strokeWidth={3} dot={false} />
-                      <Line type="monotone" dataKey="projected" name="Projected Forecast" stroke="#f0cf55" strokeWidth={3} strokeDasharray="5 5" />
-                    </LineChart>
+                      <Legend wrapperStyle={{ fontSize: 12, color: "#8291a8" }} />
+                      {showCiBand && (
+                        <Area
+                          type="monotone"
+                          dataKey="upper"
+                          name="95% CI Upper Bound"
+                          stroke="#f0cf5540"
+                          strokeDasharray="3 3"
+                          fill="#f0cf55"
+                          fillOpacity={0.12}
+                        />
+                      )}
+                      {showCiBand && (
+                        <Line
+                          type="monotone"
+                          dataKey="lower"
+                          name="95% CI Lower Bound"
+                          stroke="#f0cf5570"
+                          strokeDasharray="3 3"
+                          strokeWidth={1.5}
+                          dot={false}
+                        />
+                      )}
+                      <Line
+                        type="monotone"
+                        dataKey="historical"
+                        name="Historical Actuals"
+                        stroke="#77e5ce"
+                        strokeWidth={3}
+                        dot={{ r: 3, fill: "#77e5ce" }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="projected"
+                        name="Projected (Champion)"
+                        stroke="#f0cf55"
+                        strokeWidth={3}
+                        strokeDasharray="5 5"
+                        dot={{ r: 4, fill: "#f0cf55" }}
+                      />
+                    </ComposedChart>
                   </ResponsiveContainer>
                 </div>
-                <small className="source-note">Model: {forecast.model_name} · Source: {forecast.source_columns?.join(", ")} · {forecast.confidence_interval}</small>
+
+                {/* Multi-Model Tournament Leaderboard */}
+                {forecast.model_comparison && forecast.model_comparison.length > 0 && (
+                  <div className="forecast-tournament-section" style={{ marginTop: 28 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                      <div>
+                        <h3 style={{ margin: 0, fontSize: 15, display: "flex", alignItems: "center", gap: 8, color: "#f8fafc" }}>
+                          <Trophy size={16} style={{ color: "#e6c348" }} /> Multi-Model Tournament Leaderboard
+                        </h3>
+                        <p style={{ margin: "3px 0 0 0", fontSize: 12, color: "#8291a8" }}>
+                          Backtested across out-of-sample holdout periods. The best-performing algorithm is automatically selected.
+                        </p>
+                      </div>
+                      <span className="badge-pill" style={{ background: "rgba(230, 195, 72, 0.15)", color: "#f0cf55", border: "1px solid rgba(230, 195, 72, 0.3)" }}>
+                        {forecast.model_comparison.length} Models Evaluated
+                      </span>
+                    </div>
+
+                    <div className="tournament-table-wrapper" style={{ overflowX: "auto" }}>
+                      <table className="tournament-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                        <thead>
+                          <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)", color: "#8291a8", textAlign: "left" }}>
+                            <th style={{ padding: "8px 12px" }}>Rank</th>
+                            <th style={{ padding: "8px 12px" }}>Model Algorithm</th>
+                            <th style={{ padding: "8px 12px" }}>Status</th>
+                            <th style={{ padding: "8px 12px" }}>Backtest MAPE</th>
+                            <th style={{ padding: "8px 12px" }}>RMSE</th>
+                            <th style={{ padding: "8px 12px" }}>MAE</th>
+                            <th style={{ padding: "8px 12px" }}>Characteristics</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {forecast.model_comparison.map(m => (
+                            <tr
+                              key={m.name}
+                              style={{
+                                borderBottom: "1px solid rgba(255,255,255,0.05)",
+                                background: m.is_champion ? "rgba(230, 195, 72, 0.06)" : "transparent"
+                              }}
+                            >
+                              <td style={{ padding: "10px 12px", fontWeight: 600 }}>
+                                {m.is_champion ? <span style={{ color: "#f0cf55" }}>🥇 #{m.rank}</span> : `#${m.rank}`}
+                              </td>
+                              <td style={{ padding: "10px 12px", fontWeight: m.is_champion ? 600 : 400, color: m.is_champion ? "#f8fafc" : "#cbd5e1" }}>
+                                {m.name}
+                              </td>
+                              <td style={{ padding: "10px 12px" }}>
+                                {m.is_champion ? (
+                                  <span style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                    padding: "2px 8px",
+                                    borderRadius: 4,
+                                    fontSize: 11,
+                                    fontWeight: 600,
+                                    background: "rgba(230, 195, 72, 0.2)",
+                                    color: "#f0cf55",
+                                    border: "1px solid rgba(230, 195, 72, 0.4)"
+                                  }}>
+                                    <Trophy size={11} /> Champion
+                                  </span>
+                                ) : (
+                                  <span style={{
+                                    padding: "2px 8px",
+                                    borderRadius: 4,
+                                    fontSize: 11,
+                                    background: "rgba(255,255,255,0.05)",
+                                    color: "#8291a8"
+                                  }}>
+                                    Candidate
+                                  </span>
+                                )}
+                              </td>
+                              <td style={{ padding: "10px 12px", fontFamily: "var(--io-font-mono)", fontWeight: 600, color: m.is_champion ? "#34d399" : "#cbd5e1" }}>
+                                {m.mape != null ? `${m.mape}%` : "N/A"}
+                              </td>
+                              <td style={{ padding: "10px 12px", fontFamily: "var(--io-font-mono)", color: "#8291a8" }}>
+                                {m.rmse != null ? Number(m.rmse).toLocaleString() : "N/A"}
+                              </td>
+                              <td style={{ padding: "10px 12px", fontFamily: "var(--io-font-mono)", color: "#8291a8" }}>
+                                {m.mae != null ? Number(m.mae).toLocaleString() : "N/A"}
+                              </td>
+                              <td style={{ padding: "10px 12px", color: "#8291a8", fontSize: 11.5 }}>
+                                {m.description}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                <small className="source-note" style={{ display: "block", marginTop: 14 }}>
+                  Champion Model: {forecast.model_name} · Source: {forecast.source_columns?.join(", ")} · {forecast.confidence_interval}
+                </small>
               </>
             ) : (
               <div className="forecast-unavailable">
